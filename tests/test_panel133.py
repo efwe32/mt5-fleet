@@ -1,4 +1,4 @@
-"""v1.3.3：浮亏警报、首页弹出 3 分钟、金十 4 星过滤。
+"""v1.3.3：浮亏警报、首页弹出 3 分钟（金十日历已在 v1.3.4 去掉）。
 可单独跑（会自己拉起 --mock）：python tests/test_panel133.py
 """
 import os
@@ -6,14 +6,12 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from fleet.alerts import scan, POPUP_MS  # noqa: E402
-from fleet.calendar import filter_stars, upcoming  # noqa: E402
 
 fails = []
 
@@ -23,18 +21,6 @@ def check(name, cond, info=""):
     if not cond:
         fails.append(name)
 
-
-rows = [
-    {"id": "1", "star": 5, "pub_time": "2026-10-08 21:30:00", "country": "美国", "name": "非农", "previous": "10", "consensus": "12", "actual": "", "unit": "万人"},
-    {"id": "2", "star": 4, "pub_time": "2026-10-09 02:00:00", "country": "英国", "name": "利率", "previous": "4", "consensus": "4", "actual": None},
-    {"id": "3", "star": 3, "pub_time": "2026-10-08 15:00:00", "country": "日本", "name": "三星数据", "previous": "1"},
-    {"id": "4", "star": 5, "country": "美国", "name": "没有时间"},
-]
-kept = filter_stars(rows)
-check("日历只留 4 星及以上且有时间", [r["title"] for r in kept] == ["非农", "利率"] and all(r["star"] >= 4 for r in kept), [r["title"] for r in kept])
-check("前值预期公布", kept[0]["previous"] == "10" and kept[0]["forecast"] == "12" and kept[0]["actual"] == "")
-win = upcoming(kept, datetime(2026, 10, 8, 12, 0), 1)
-check("只留今天和明天", [r["title"] for r in win] == ["非农", "利率"], [r["title"] for r in win])
 
 fresh, armed = scan([{"id": "a", "alias": "甲", "login": "1", "floating": -2999, "currency": "USD"}], 3000, {})
 check("没到 3000 不响", fresh == [] and armed == {})
@@ -132,19 +118,7 @@ try:
             break
         time.sleep(0.5)
     check("USDJPY 有价格和涨跌", bool(q) and "change" in q, q)
-    cal = None
-    for _ in range(25):
-        st = c.get("/api/state").json()
-        cal = st.get("calendar") or {}
-        if cal.get("events") or cal.get("error"):
-            break
-        time.sleep(0.5)
-    ev = cal.get("events") or []
-    check("日历事件都是 4 星及以上", all(e.get("star", 0) >= 4 for e in ev), [e.get("star") for e in ev[:8]])
-    if not ev:
-        check("金十未授权时有说明", "未授权" in (cal.get("error") or "") or "金十" in (cal.get("error") or ""), cal.get("error"))
-    else:
-        check("金十返回了日历", True, len(ev))
+    check("状态里没有日历", "calendar" not in st)
 finally:
     proc.terminate()
     try:
