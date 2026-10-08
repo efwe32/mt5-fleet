@@ -1,0 +1,5 @@
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+psutil>=5.9
+MetaTrader5>=5.0.45; sys_platform == "win32"
