@@ -1,0 +1,79 @@
+/* ===== 交易页 快捷交易面板（仿 MT5 EA 面板：黑底、彩色信息行、大按钮） ===== */
+.qp-wrap{display:grid;grid-template-columns:minmax(340px,480px) minmax(0,1fr);gap:16px;align-items:start;margin-bottom:16px}
+.qp{--pd-line:#2c2c2c;--pd-line2:#222;--pd-ink:#f2f2f2;--pd-mut:#9a9a9a;--pd-faint:#6c6c6c;--pd-g:#33e07a;
+  --pd-sans:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Noto Sans SC","Segoe UI",sans-serif;
+  --pd-mono:Consolas,"Cascadia Mono",Menlo,"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",monospace;
+  background:#000;border:1px solid #2c2c2c;border-radius:8px;padding:14px 14px 10px;color:#f2f2f2;font:15px/1.55 var(--pd-sans);box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.qp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.qp-title{font-size:16px;color:#fff;letter-spacing:.5px}
+.qp .pd-pickbtn{background:#111;color:#e8e8e8;border-color:#3a3a3a;max-width:250px}
+.qp .pd-pickbtn:hover,.qp .pd-pickbtn[aria-expanded="true"]{background:#1a1a1a;border-color:#00bcd4}
+.qp .pd-pickbtn.on{background:#00363d;color:#7ff3ff;border-color:#00bcd4}
+.qp .pd-pop{left:auto;right:0;width:380px;background:#0d0d0d;border-color:#333;box-shadow:0 14px 36px rgba(0,0,0,.6);color:#eee}
+.qp .pd-pop .pp-row button{background:#1b1b1b;border-color:#333;color:#ddd}
+.qp .pd-pop .pp-row button:hover{background:#262626}
+.qp .pd-pop label:hover{background:#161616}
+.qp .pd-pop label input{accent-color:#00bcd4;width:16px;height:16px}
+.qp .pd-pop label .fl{font:12px var(--pd-mono);min-width:70px;text-align:right;color:#aaa}
+.qp .pd-pop .pp-foot button{background:#00bcd4;color:#001316}
+.qp-cfg{display:flex;flex-wrap:wrap;gap:8px 12px;margin-bottom:10px;font-size:13px;color:#bbb}
+.qp-cfg label,.qp-lots label{display:flex;align-items:center;gap:6px}
+.qp-in{background:#000;color:#fff;border:1px solid #00bcd4;border-radius:2px;padding:5px 8px;font:15px var(--pd-mono);min-height:34px}
+.qp-in:focus{outline:2px solid #00e5ff;outline-offset:0}
+.qp-in:disabled{opacity:.7;border-color:#555}
+#qSym{width:120px}#qRef{width:100px}
+select.qp-in{font-family:var(--pd-sans);font-size:13px}
+.qp-info{font:15px/1.75 var(--pd-sans);margin-bottom:10px;overflow-wrap:anywhere}
+.qp-info span{font-family:var(--pd-mono)}
+.qc-cyan{color:#00e5ff}.qc-green{color:#3dff5a}.qc-mag{color:#ff3dff}.qc-white{color:#fff}.qc-yellow{color:#ffff3d}
+.qc-small{font-size:11.5px;line-height:1.6}.qc-lg{color:#8dff8d}.qc-ls{color:#ffd0d0}
+.qp-info .q-note{font-family:var(--pd-sans)}
+.qp-lots{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 12px;flex-wrap:wrap}
+.qp-lotin{width:120px;font-size:17px}
+.qp-chk{font-size:13px;color:#cfcfcf;cursor:pointer;user-select:none}
+.qp-chk input{accent-color:#00bcd4;width:16px;height:16px}
+.qp-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 14px}
+.qb{min-height:50px;border:2px solid rgba(255,255,255,.18);border-radius:3px;font:500 19px var(--pd-sans);color:#fff;cursor:pointer;letter-spacing:1px;transition:filter .12s,transform .06s}
+.qb:hover:not(:disabled){filter:brightness(1.18)}
+.qb:active:not(:disabled){transform:translateY(1px)}
+.qb:disabled{opacity:.45;cursor:not-allowed}
+.qb:focus-visible,.qb-arm:focus-visible{outline:2px solid #00e5ff;outline-offset:2px}
+.qb-wide{grid-column:1 / -1}
+.qp-gap{grid-column:1 / -1;height:4px}
+.qb-buy{background:#003a00;color:#5dff5d;border-color:#0d5c0d}
+.qb-sell{background:#4a0000;color:#ff6b6b;border-color:#6e1010}
+.qb-pair{background:#ff8c00;border-color:#ffa733}
+.qb-cl{background:#008080;border-color:#1aa3a3}
+.qb-cs{background:#800000;border-color:#a31a1a}
+.qb-cp{background:#4682b4;border-color:#6aa0cc}
+.qb-cx{background:#d2691e;border-color:#e38a45}
+.qb-nuke{background:#dc143c;color:#ffff3d;border-color:#f04a68;font-weight:700}
+.qp-auto{display:flex;gap:6px;align-items:stretch}
+.qp-auto .qp-in{flex:1;min-width:0;font-size:17px;min-height:50px}
+.qb-arm{flex-shrink:0;min-width:64px;padding:0 8px;background:#111;color:#00e5ff;border:1px solid #00bcd4;border-radius:2px;cursor:pointer;font:600 14px var(--pd-sans)}
+.qb-arm:hover:not(:disabled){background:#002a30}
+.qb-arm.on{background:#5a0060;color:#ffd0ff;border-color:#ff3dff;animation:qarm 1.4s infinite}
+.qb-arm:disabled{opacity:.45;cursor:not-allowed}
+@keyframes qarm{50%{box-shadow:0 0 0 3px rgba(255,61,255,.35)}}
+.qp-res{margin-top:12px;font-size:13px}
+.qp-res:empty{display:none}
+.q-rh{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.q-rl{max-height:150px;overflow:auto;margin-top:6px;border-top:1px solid #222;padding-top:6px;font-size:12.5px;line-height:1.6}
+.q-x{margin-left:auto;background:none;border:0;color:#888;font-size:18px;cursor:pointer;line-height:1}
+.q-x:hover{color:#fff}
+.q-hint{color:#ffcf6b;font-size:13px;border:1px dashed #5a4a20;border-radius:4px;padding:8px 10px}
+.q-up{color:#3dff5a}.q-dn{color:#ff6b6b}.q-ok{color:#9be7a9}.q-note{color:#8c8c8c}.q-armed{color:#ff3dff}.q-sm{font-size:11.5px}
+.qp-status{margin-top:12px;padding-top:8px;border-top:1px solid #1e1e1e;font-size:12.5px;color:#cfcfcf;line-height:1.6}
+.qp-side{background:#0a0a0a;border:1px solid #2c2c2c;border-radius:8px;padding:12px 14px;color:#e8e8e8;min-width:0}
+.qp-side h3{margin:0 0 8px;font-size:15px;font-weight:600}
+.q-tw{overflow:auto;max-height:560px}
+.qp-side table{width:100%;border-collapse:collapse;font-size:13px}
+.qp-side th{position:sticky;top:0;background:#0a0a0a;color:#8c8c8c;font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid #2a2a2a;white-space:nowrap}
+.qp-side td{padding:6px 8px;border-bottom:1px solid #191919;vertical-align:top}
+.q-num{font-family:Consolas,"Cascadia Mono",Menlo,monospace;white-space:nowrap}
+details.adv{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:0}
+details.adv>summary{cursor:pointer;padding:12px 16px;font-weight:600;color:var(--fg);list-style-position:inside}
+details.adv[open]>summary{border-bottom:1px solid var(--line)}
+details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
+@media (max-width:1100px){.qp-wrap{grid-template-columns:1fr}.qp{max-width:560px}}
+@media (max-width:560px){.qp{padding:12px 10px}.qb{font-size:17px;min-height:52px}.qp .pd-pop{width:calc(100vw - 32px)}.qp-head{flex-wrap:wrap}.qp .pd-pick{width:100%}.qp .pd-pickbtn{width:100%;max-width:none;text-align:left}.qp .pd-pop{left:0;right:auto}}

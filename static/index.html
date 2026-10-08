@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MT5 批量终端</title>
+<meta name="theme-color" content="#12140f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23e0b15a'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='18' font-weight='700' text-anchor='middle' fill='%231c1408'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/desk.css">
+<link rel="stylesheet" href="/static/quick.css">
+<script>window.FLEET_TOKEN = "__FLEET_TOKEN__";</script>
+</head>
+<body>
+<div id="toasts" aria-live="polite"></div>
+<div class="app">
+  <aside>
+    <div class="brand"><div class="logo">批</div><div><small>多账户</small><b>MT5 批量终端</b></div></div>
+    <nav id="nav" aria-label="功能"></nav>
+    <button type="button" class="side-exit" data-act="exit-app" title="关闭后台程序（隐藏模式下没有黑色窗口，用这里退出）">退出程序</button>
+    <div class="side-foot"><span class="dot" id="sideDot"></span><span id="sideText">离线</span></div>
+  </aside>
+  <div class="main">
+    <header>
+      <div class="mobile-top">
+        <div class="logo">批</div>
+        <div class="brand"><div><small>多账户</small><b>MT5 批量终端</b></div></div>
+      </div>
+      <div class="tabs-mobile" id="navMobile" role="tablist" aria-label="功能"></div>
+      <dl class="summary">
+        <div><dt>已选</dt><dd class="num" id="sumSel">0</dd></div>
+        <div><dt>在线</dt><dd class="num" id="sumOnline">0/0</dd></div>
+        <div><dt>净值</dt><dd class="num" id="sumEquity">0.00</dd></div>
+        <div><dt>浮盈</dt><dd class="num" id="sumFloat">0.00</dd></div>
+        <span class="mode live" id="modeBtn" title="所有操作都会真实发送到券商，执行前会弹出确认"><span class="dot"></span><span id="modeText">实盘 · 会真实发单</span></span>
+      </dl>
+    </header>
+    <div id="warn"></div>
+    <div id="banner"></div>
+    <main>
+      <!-- 账号 -->
+      <section class="page" data-page="accounts">
+        <div class="row">
+          <button class="btn primary" data-act="quick">添加并登录</button>
+          <button class="btn" data-act="login">批量登录</button>
+          <button class="btn" data-act="disconnect">断开</button>
+          <button class="btn" data-act="refresh">刷新</button>
+          <button class="btn ghost" data-act="add">仅添加</button>
+          <button class="btn ghost" data-act="import">导入 CSV</button>
+          <button class="btn ghost" data-act="example">示例 CSV</button>
+          <button class="btn danger" data-act="delete">删除</button>
+          <input type="file" id="csvFile" accept=".csv,text/csv" class="sr-only">
+        </div>
+        <div class="row">
+          <div style="width:100%;max-width:320px"><input class="input" id="search" placeholder="搜索备注、账号、服务器" aria-label="搜索账户"></div>
+          <div class="row" id="groupFilter"></div>
+        </div>
+        <div id="accList"></div>
+      </section>
+
+      <!-- 交易 -->
+      <section class="page hidden" data-page="trade">
+        <!-- 快捷交易面板：仿 EA 面板，作用于面板里自选的账户 -->
+        <div class="qp-wrap">
+          <div class="qp" id="qp">
+            <div class="qp-head">
+              <b class="qp-title">快捷交易面板</b>
+              <div class="pd-pick" id="qpPickWrap">
+                <button type="button" class="pd-pickbtn" id="qpPick" aria-haspopup="true" aria-expanded="false">选择账户 ▾</button>
+                <div class="pd-pop hidden" id="qpPop" role="dialog" aria-label="选择账户"></div>
+              </div>
+            </div>
+            <div class="qp-cfg">
+              <label>品种<input class="qp-in" id="qSym" list="symList" maxlength="32" autocomplete="off" title="填标准名或券商实际名称；每个账户会按自己的后缀/映射自动换算（例如 USDJPY → USDJPYc）"></label>
+              <label>手数模式<select class="qp-in" id="qMode"><option value="fixed">固定手数</option><option value="multiplier">按账户倍数</option><option value="equity">按净值比例</option></select></label>
+              <label id="qRefWrap" class="hidden">基准净值<input class="qp-in num" id="qRef" inputmode="decimal"></label>
+            </div>
+            <div class="qp-info">
+              <div class="qc-cyan">当前报价: <span id="qQuote">— / —</span></div>
+              <div class="qc-green">今日 <span id="qToday">—</span> | 历史 <span id="qHist">—</span></div>
+              <div class="qc-mag" title="所选在线账户：(余额 − 净值) ÷ 余额">当前回撤: <span id="qDD">—</span></div>
+              <div class="qc-white" id="qPos" title="L = 持仓笔数；盈亏价 = 按手数加权的开仓均价（不含手续费和隔夜利息）">多 L0 0.00手 盈亏价 — | 空 L0 0.00手 盈亏价 —</div>
+              <div class="qc-yellow" id="qPnl">持仓盈亏: 多 0.00 | 空 0.00 | 净 0.00</div>
+              <div class="qc-small qc-lg" id="qLayL">多层级价位: —</div>
+              <div class="qc-small qc-ls" id="qLayS">空层级价位: —</div>
+            </div>
+            <div class="qp-lots">
+              <label>开单手数:<input class="qp-in qp-lotin num" id="qLots" inputmode="decimal"></label>
+              <label class="qp-chk" title="勾选：平仓按钮只平当前品种；不勾：平所有品种。核弹级全平总是平所有品种"><input type="checkbox" id="qOnly"> 仅当前品种</label>
+            </div>
+            <div class="qp-grid">
+              <button type="button" class="qb qb-buy" data-q="buy">一键开多</button>
+              <button type="button" class="qb qb-sell" data-q="sell">一键开空</button>
+              <button type="button" class="qb qb-pair qb-wide" data-q="pair" title="同时开一张多单和一张空单（对冲）">一键开单</button>
+              <div class="qp-gap"></div>
+              <button type="button" class="qb qb-cl" data-q="close_long">平全部多</button>
+              <button type="button" class="qb qb-cs" data-q="close_short">平全部空</button>
+              <button type="button" class="qb qb-cp" data-q="close_profit">平所有盈利</button>
+              <button type="button" class="qb qb-cx" data-q="close_loss">平所有亏损</button>
+              <button type="button" class="qb qb-nuke" data-q="nuke" title="平掉所选账户的全部持仓（所有品种）并撤销全部挂单">核弹级全平</button>
+              <div class="qp-auto" title="自动全平：所选账户合计浮动盈亏达到这个金额时自动核弹级全平（正数=止盈，负数=止损，0=不启用）"><input class="qp-in num" id="qAuto" inputmode="decimal" value="0.00" aria-label="自动全平金额"><button type="button" class="qb-arm" id="qArm">启用</button></div>
+            </div>
+            <div class="qp-res" id="qRes"></div>
+            <div class="qp-status" id="qStatus">状态: —</div>
+          </div>
+          <div class="qp-side" id="qSide"></div>
+        </div>
+
+        <details class="adv" id="tradeAdv">
+        <summary>高级批量操作（按账号页勾选的账户：挂单、止损止盈、按魔术号平仓、持仓明细）</summary>
+        <div id="tradeEmpty"></div>
+        <div id="tradeBody" class="hidden" style="display:flex;flex-direction:column;gap:16px">
+          <div class="panel">
+            <h2>批量下单</h2>
+            <p class="small muted" style="margin:4px 0 12px">对已勾选、已登录的账户同时下单。下单前会先显示每个账户的手数预览，确认后才执行。</p>
+            <div class="grid4">
+              <label class="field"><span>品种（标准名，后缀在账户里设置）</span><input class="input" id="oSymbol" list="symList" value="XAUUSD"></label>
+              <label class="field"><span>类型</span>
+                <select class="input" id="oKind">
+                  <option value="buy">市价买入</option><option value="sell">市价卖出</option>
+                  <option value="buy_limit">买入限价</option><option value="sell_limit">卖出限价</option>
+                  <option value="buy_stop">买入止损</option><option value="sell_stop">卖出止损</option>
+                </select></label>
+              <label class="field"><span>手数（基准）</span><input class="input num" id="oLots" value="0.01" inputmode="decimal"></label>
+              <label class="field" id="oPriceWrap"><span>挂单价格</span><input class="input num" id="oPrice" inputmode="decimal" placeholder="市价单不用填" disabled></label>
+              <label class="field"><span>手数模式</span>
+                <select class="input" id="oScale">
+                  <option value="fixed">固定手数（所有账户相同）</option>
+                  <option value="multiplier">按账户倍数（账户里设置的倍数）</option>
+                  <option value="equity">按净值比例（手数 × 净值 / 基准净值）</option>
+                </select></label>
+              <label class="field"><span>基准净值（按净值比例时用）</span><input class="input num" id="oRefEq" value="10000" inputmode="decimal"></label>
+              <label class="field"><span>缩放只对这些分组生效（逗号分隔，空=全部）</span><input class="input" id="oGroups" value="跟单"></label>
+              <label class="field"><span>止损/止盈单位</span>
+                <select class="input" id="oUnit"><option value="price">价格</option><option value="points">点数（离开仓价）</option></select></label>
+              <label class="field"><span>止损 SL（0=不设）</span><input class="input num" id="oSL" value="0" inputmode="decimal"></label>
+              <label class="field"><span>止盈 TP（0=不设）</span><input class="input num" id="oTP" value="0" inputmode="decimal"></label>
+              <label class="field"><span>魔术号</span><input class="input num" id="oMagic" value="880000" inputmode="numeric"></label>
+              <label class="field"><span>注释</span><input class="input" id="oComment" value="fleet" maxlength="31"></label>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <button class="btn up" data-act="order-buy">市价买入…</button>
+              <button class="btn danger" data-act="order-sell">市价卖出…</button>
+              <button class="btn primary" data-act="order">按所选类型下单…</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>批量平仓</h2>
+            <div class="row" style="margin-top:12px">
+              <button class="btn danger" data-close="all">全平</button>
+              <button class="btn" data-close="long">平多</button>
+              <button class="btn" data-close="short">平空</button>
+              <button class="btn" data-close="profit">平盈利单</button>
+              <button class="btn" data-close="loss">平亏损单</button>
+              <button class="btn ghost" data-act="cancel-orders">撤销全部挂单</button>
+            </div>
+            <div class="grid2" style="margin-top:12px">
+              <div class="split"><select class="input" id="cSymbol" aria-label="品种"></select><button class="btn" data-close="symbol">按品种平</button></div>
+              <div class="split"><input class="input num" id="cMagic" value="88001" inputmode="numeric" aria-label="魔术号"><button class="btn" data-close="magic">按魔术号平</button></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>批量改止损 / 止盈</h2>
+            <p class="small muted" style="margin:4px 0 12px">留空 = 不改，填 0 = 清除。点数模式按每笔持仓的开仓价计算。</p>
+            <div class="grid4">
+              <label class="field"><span>范围</span><select class="input" id="mScope"></select></label>
+              <label class="field"><span>单位</span><select class="input" id="mUnit"><option value="price">价格</option><option value="points">点数（离开仓价）</option></select></label>
+              <label class="field"><span>止损 SL</span><input class="input num" id="mSL" inputmode="decimal" placeholder="留空不改"></label>
+              <label class="field"><span>止盈 TP</span><input class="input num" id="mTP" inputmode="decimal" placeholder="留空不改"></label>
+            </div>
+            <div class="row" style="margin-top:12px"><button class="btn" data-act="modify">批量修改…</button></div>
+          </div>
+
+          <div class="panel"><h3>已选在线敞口</h3><div id="exposure" style="margin-top:8px"></div></div>
+          <div id="posList"></div>
+          <div id="ordList"></div>
+          <p class="small faint" id="tradeNote"></p>
+        </div>
+        </details>
+      </section>
+
+      <!-- 策略 -->
+      <section class="page hidden" data-page="strategy">
+        <div class="grid2 strat-top">
+          <div class="panel">
+            <h2><span class="stepno">1</span>上传 EA 到 EA 库</h2>
+            <p class="small muted" style="margin:4px 0 12px">上传一次即可（.ex5，可加 .set 参数文件），之后可以分发到任意多个账户。</p>
+            <div class="row" id="libList"></div>
+            <div class="row" style="margin-top:12px">
+              <button class="btn" data-act="upload">上传 EX5 / SET</button>
+              <input type="file" id="eaFile" accept=".ex5,.set" class="sr-only" multiple>
+            </div>
+          </div>
+          <div class="panel">
+            <h2><span class="stepno">2</span>一键分发到账户</h2>
+            <p class="small muted" style="margin:4px 0 12px">选账户、品种、周期、魔术号，点「分发」后自动：复制 EA → 重启终端 → 挂到图表并打开算法交易 → 校验。未登录的账户会先自动登录。</p>
+            <div class="row">
+              <button class="btn primary" data-act="distribute">分发…</button>
+              <button class="btn" data-act="stop-strats">一键停止（已勾选账户）</button>
+              <button class="btn danger" data-act="strip-strats">一键移除（已勾选账户）</button>
+            </div>
+          </div>
+        </div>
+        <div id="stratList"></div>
+      </section>
+
+      <!-- 收益（收益台 · 首页） -->
+      <section class="page hidden" data-page="stats">
+        <div class="pdesk" id="pdesk">
+          <div class="pd-card pd-head">
+            <div class="pd-logo" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M9 29 L17 19 L23 24 L31 11" fill="none" stroke="#10140a" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31" cy="11" r="3.4" fill="#10140a"/></svg></div>
+            <div class="pd-title">MT5 批量终端<span class="pd-bar">|</span><span class="pd-sub" id="pdSub">收益台</span></div>
+            <div class="pd-pick" id="pdPickWrap"><button type="button" class="pd-pickbtn" id="pdPick" aria-haspopup="true" aria-expanded="false">选择账户：全部 ▾</button><div class="pd-pop hidden" id="pdPop" role="dialog" aria-label="选择查看收益的账户"></div></div>
+            <div class="pd-live" id="pdLive"><i></i><span id="pdLiveT">实时</span></div>
+            <div class="pd-clock" id="pdClock">--:-- / 13 小时</div>
+          </div>
+
+          <div class="pd-card pd-metrics">
+            <div class="pd-m"><div class="pd-lab">净值 / <span id="pdCcy">USD</span></div><div class="pd-big" id="pdBal">0.00</div><div class="pd-cap" id="pdFrom">起点 0.00</div></div>
+            <div class="pd-m"><div class="pd-lab" title="今日已平仓的盈亏合计（含手续费、隔夜利息），不含持仓浮动；下面一行是当前持仓的浮亏金额">总盈亏 / USD（今日平仓）</div><div class="pd-big pd-g" id="pdPnl">+$0.00</div><div class="pd-cap pd-g" id="pdPnlPct">+0.00%</div></div>
+            <div class="pd-m"><div class="pd-lab">运行时长</div><div class="pd-big" id="pdMission">00:00</div><div class="pd-cap" id="pdMissionCap">--:-- → --:--</div></div>
+            <div class="pd-m pd-gate live"><div class="pd-lab">交易状态<i class="pd-gdot"></i></div>
+              <div class="pd-gname"><b id="pdGate">实盘</b><span id="pdGateTag">已连接</span></div>
+              <div class="pd-segs" id="pdSegs"></div><div class="pd-cap pd-gcap" id="pdGateCap"></div></div>
+          </div>
+
+          <div class="pd-grid2 pd-r1">
+            <div class="pd-card pd-hist">
+              <div class="pd-mt"><span>// 净值曲线</span><span class="pd-tog" id="pdHistTog"><button type="button" data-hist="eq" class="on">净值</button><button type="button" data-hist="closed">已平仓</button></span><span id="pdHistR">USD / 13 小时</span></div>
+              <div class="pd-cv"><canvas id="pdHistC"></canvas></div>
+            </div>
+            <div class="pd-card pd-log">
+              <div class="pd-mt"><span>// 活动日志</span><span id="pdEvN">0 条事件</span></div>
+              <div class="pd-top" id="pdTop"></div>
+              <div class="pd-rows" id="pdRows"></div>
+            </div>
+          </div>
+
+          <div class="pd-card pd-ridge">
+            <div class="pd-ct"><b><i style="background:#1d1d1f"></i>盈亏分布山脊图</b><span class="pd-mid">单笔平仓盈亏 · 滚动窗口</span><span class="pd-rt">每条山脊一个窗口 / 粉色为大赢尾部</span></div>
+            <div class="pd-split">
+              <div class="pd-stats" id="pdRidgeS"></div>
+              <div class="pd-cv"><canvas id="pdRidgeC"></canvas></div>
+            </div>
+          </div>
+
+          <div class="pd-grid2 pd-r3">
+            <div class="pd-card pd-chord">
+              <div class="pd-ct"><b><i style="background:#e8782a"></i>账户品种和弦图</b><span class="pd-mid">账户 → 品种 · 持仓流向</span><span class="pd-rt" id="pdChordN">0 个节点</span></div>
+              <div class="pd-split2"><div class="pd-cv"><canvas id="pdChordC"></canvas></div><div class="pd-stats" id="pdChordS"></div></div>
+              <div class="pd-foot">按持仓手数连线 / 每笔持仓都有去向</div>
+            </div>
+            <div class="pd-card pd-lat">
+              <div class="pd-ct"><b><i style="background:#2f5fd0"></i>策略立方体</b><span class="pd-mid">五维超立方体 · 舰队维度</span><span class="pd-rt">32 个顶点 · 80 条棱</span></div>
+              <div class="pd-split2 rev"><div class="pd-stats" id="pdLatS"></div><div class="pd-cv"><canvas id="pdLatC"></canvas></div></div>
+              <div class="pd-foot">维度一 账户 · 维度二 持仓 · 维度三 品种 · 维度四 策略 · 维度五 方向</div>
+            </div>
+          </div>
+
+          <div class="pd-card pd-graph">
+            <div class="pd-ct"><b><i style="background:#e0457b"></i>跟单关系图</b><span class="pd-mid">主仓 → 跟单 / 成交流向</span><span class="pd-rt" id="pdGraphN">0 个节点 · 0 条连线</span></div>
+            <div class="pd-split3">
+              <div class="pd-stats" id="pdGraphL"></div>
+              <div class="pd-cv"><canvas id="pdGraphC"></canvas></div>
+              <div class="pd-stats" id="pdGraphR"></div>
+            </div>
+          </div>
+
+          <div class="pd-card pd-avs"><div class="pd-avrow" id="pdAvs"></div></div>
+
+          <details class="pd-card pd-classic" id="pdClassic">
+            <summary><span>// 经典统计</span><span class="pd-rt">今日 / 7 日 / 本月 / 全年 · 月度 · 胜率 · 账户贡献</span></summary>
+            <div class="pd-classic-body">
+              <div class="row">
+                <button class="btn primary" data-act="stats-refresh">读取平仓历史</button>
+                <span class="small muted" id="statsScopeInfo">范围：顶部「选择账户」</span>
+                <span class="small muted" id="statsInfo"></span>
+              </div>
+              <div id="statsBody"></div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- 日志 -->
+      <section class="page hidden" data-page="log">
+        <div class="row">
+          <button class="btn" data-act="log-fail" id="logFailBtn">只看失败</button>
+          <button class="btn" data-act="log-csv">导出 CSV</button>
+          <button class="btn ghost" data-act="log-clear">清空日志</button>
+        </div>
+        <div id="logList"></div>
+        <p class="small faint">日志同时按天保存在数据目录 logs\ 文件夹里（jsonl 格式）。</p>
+      </section>
+
+      <!-- 设置 -->
+      <section class="page hidden" data-page="settings">
+        <div class="panel" id="updPanel">
+          <h2>在线更新 <span class="upd-cur num" id="updCur"></span></h2>
+          <p class="small muted" style="margin:4px 0 12px">从公开的 GitHub 仓库下载新版本，<b>不需要登录 GitHub</b>。只替换程序文件（app.py、fleet、static、tools、启动脚本），<b>账户、设置、日志、EA 库、MT5 终端、Python 都不动</b>；替换前自动备份到 <span class="num">data\backups</span>。更新完成后后台自动重启，<b>MT5 终端和 EA 继续运行</b>，网页自动刷新。</p>
+          <div class="row">
+            <button class="btn" data-act="upd-check">检查更新</button>
+            <button class="btn primary" data-act="upd-install" id="updInstallBtn" disabled>立即更新</button>
+            <button class="btn" data-act="upd-rollback" id="updRollbackBtn">恢复上一个版本…</button>
+          </div>
+          <div id="updResult" style="margin-top:12px"></div>
+          <div id="updProgress" class="hidden" style="margin-top:12px">
+            <div class="upd-bar"><i id="updBar"></i></div>
+            <p class="small" id="updMsg" style="margin:6px 0 0"></p>
+            <pre class="upd-log" id="updLog"></pre>
+          </div>
+          <details style="margin-top:12px">
+            <summary class="small muted" style="cursor:pointer">更新源设置（一般不用改）</summary>
+            <div class="grid2" style="margin-top:10px">
+              <label class="field"><span>GitHub 仓库（公开仓库，不需要登录）</span><input class="input num" id="setUpdRepo" placeholder="efwe32/mt5-fleet"></label>
+              <label class="field"><span>自定义更新地址（GitHub 打不开时用：latest.json 直链，可放网盘 / 自己的服务器）</span><input class="input num" id="setUpdUrl" placeholder="https://…/latest.json（留空 = 不用）"></label>
+              <label class="field"><span>github.com 下载慢时使用加速镜像</span><select class="input" id="setUpdMirror"><option value="1">是（内容按 sha256 校验，镜像改不了）</option><option value="0">否（只从 GitHub 直接下载）</option></select></label>
+              <label class="field"><span>打开网页时检查新版本</span><select class="input" id="setUpdAuto"><option value="1">是（只在「设置」上显示「新」，不会自动安装）</option><option value="0">否</option></select></label>
+            </div>
+            <div class="row" style="margin-top:12px"><button class="btn primary" data-act="save-settings">保存设置</button></div>
+          </details>
+        </div>
+        <div class="panel">
+          <h2>服务器列表</h2>
+          <p class="small muted" style="margin:4px 0 12px">新复制的终端可能还不认识你的券商服务器（登录报「授权失败」）。可以从你电脑上已经登录过这个券商的 MT5 导入服务器列表：只读复制它的 <span class="num">Config\servers.dat</span>，不会改动那份 MT5。</p>
+          <p class="small" id="srvInfo" style="margin:0 0 12px"></p>
+          <div class="row"><button class="btn" data-act="import-servers">从已有 MT5 导入服务器列表…</button></div>
+        </div>
+        <div class="panel">
+          <h2>默认品种与图表</h2>
+          <p class="small muted" style="margin:4px 0 12px">分发 EA 窗口默认填这里的品种和周期；一键登录打开的终端也只显示这一个图表（挂着 EA 的图表会保留）。品种请填券商里的实际名称，例如美分账户是 <span class="num">USDJPYc</span>。</p>
+          <div class="grid3">
+            <label class="field"><span>默认品种</span><input class="input num" id="setDefSym" list="symList" placeholder="USDJPYc"></label>
+            <label class="field"><span>默认周期</span><select class="input" id="setDefTf"></select></label>
+            <label class="field"><span>启动终端时只保留一个图表</span><select class="input" id="setSingle"><option value="1">是（推荐，省内存）</option><option value="0">否（保留终端原有图表）</option></select></label>
+            <label class="field"><span>重新打开程序时自动接管仍在运行的终端</span><select class="input" id="setReattach"><option value="1">是（EA 不中断）</option><option value="0">否</option></select></label>
+          </div>
+          <div class="row" style="margin-top:12px"><button class="btn primary" data-act="save-settings">保存设置</button></div>
+        </div>
+        <div class="panel">
+          <h2>安全</h2>
+          <div class="grid3" style="margin-top:12px">
+            <label class="field"><span>单笔最大手数（超过即拦截）</span><input class="input num" id="setMaxLots" inputmode="decimal"></label>
+            <label class="field"><span>单次批量合计最大手数</span><input class="input num" id="setMaxTotal" inputmode="decimal"></label>
+            <label class="field"><span>市价单滑点（点）</span><input class="input num" id="setDev" inputmode="numeric"></label>
+            <label class="field"><span>刷新间隔（秒，登录后生效）</span><input class="input num" id="setPoll" inputmode="decimal"></label>
+            <label class="field"><span>默认缩放分组（逗号分隔）</span><input class="input" id="setGroups"></label>
+            <label class="field"><span>断开时关闭（本程序启动的）终端</span><select class="input" id="setCloseTerm"><option value="0">否（只断开本程序的连接）</option><option value="1">是</option></select></label>
+            <label class="field"><span>退出程序时关闭（本程序启动的）终端</span><select class="input" id="setCloseExit"><option value="1">是（EA 会随终端停止）</option><option value="0">否（终端和 EA 继续运行）</option></select></label>
+            <label class="field"><span>启动受管终端时自动打开算法交易</span><select class="input" id="setAlgo"><option value="1">是（推荐，本程序发单需要）</option><option value="0">否（自己在终端里点）</option></select></label>
+            <label class="field"><span>允许 EA 调用 DLL</span><select class="input" id="setDll"><option value="0">否（推荐）</option><option value="1">是（EA 需要时才开）</option></select></label>
+            <label class="field"><span>一键登录同时处理的账户数</span><input class="input num" id="setLoginConc" inputmode="numeric"></label>
+            <label class="field"><span>分发 EA 同时处理的账户数</span><input class="input num" id="setDistConc" inputmode="numeric"></label>
+            <label class="field"><span>交易页快捷面板免确认</span><select class="input" id="setQuickNC"><option value="0">否（每次点击确认一次，推荐）</option><option value="1">是（核弹级全平、自动全平仍需确认）</option></select></label>
+            <label class="field"><span>启动配置文件编码</span><select class="input" id="setIni"><option value="utf-16">UTF-16（默认）</option><option value="utf-8">UTF-8</option><option value="mbcs">ANSI</option></select></label>
+          </div>
+          <div class="row" style="margin-top:12px"><button class="btn primary" data-act="save-settings">保存设置</button><span class="small muted" id="pwInfo"></span></div>
+        </div>
+        <div class="panel">
+          <h2>受管终端（与桌面上的 MT5 隔离）</h2>
+          <p class="small muted" style="margin:4px 0 12px">本程序只使用 <b class="num" id="rootPath">terminals</b> 里的 MT5：每个账户一个子文件夹（<span class="num">terminals\&lt;账号&gt;\terminal64.exe</span>），总是用 <span class="num">/portable</span> 启动，数据都留在各自文件夹里，不读写 %APPDATA%\MetaQuotes，也不碰你桌面上正在用的 MT5。程序只会关闭它自己启动并记录了 PID 的终端。</p>
+          <div class="grid2">
+            <label class="field"><span>模板 MT5 目录（新账户从这里复制一份；只读取，不会改动它；留空 = 自动在程序目录里找）</span>
+              <div class="split"><input class="input" id="setTpl" placeholder="例如 D:\15\MetaTrader 5"><button class="btn" type="button" data-act="tpl-check">检测</button></div></label>
+            <div style="display:flex;align-items:flex-end"><button class="btn" data-act="clone">为已勾选账户创建终端副本</button></div>
+          </div>
+          <p class="small" id="tplInfo" style="margin:8px 0 0"></p>
+          <p class="small faint" style="margin:8px 0 0">一般不需要手动创建：账号页「添加并登录」会自动复制。也可以关掉本程序后双击「创建终端副本.bat」。</p>
+          <div class="row" style="margin-top:12px">
+            <button class="btn" data-act="close-owned">关闭本程序启动的全部终端</button>
+            <button class="btn danger" data-act="exit-app">退出程序</button>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer id="footText"></footer>
+  </div>
+</div>
+<datalist id="symList"></datalist>
+<datalist id="setList"></datalist>
+<datalist id="serverList"></datalist>
+<datalist id="groupList"><option value="主仓"><option value="跟单"><option value="测试"></datalist>
+<div id="modal"></div>
+<script src="/static/desk.js"></script>
+<script src="/static/quick.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
