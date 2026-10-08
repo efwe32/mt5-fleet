@@ -197,3 +197,14 @@ body.desk-mode .warnbar{background:#fff3f5;border-color:#e9a5b4;color:#b0203c;bo
   .pd-row{grid-template-columns:40px 52px minmax(0,1fr) 10px}
 }
 @media (prefers-reduced-motion:reduce){.pd-live i::after,.pd-gate .pd-gdot{animation:none}}
+
+.pd-topbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:10px 14px}
+.pdesk .fx{color:var(--pd-ink)}
+.pdesk .fx .src{color:var(--pd-mut)}
+.pdesk .alert-chip{background:#fff5f6}
+.pd-cal{padding:12px 14px}
+.pd-cal-body{margin-top:8px;overflow-x:auto}
+.pd-cal table{width:100%;border-collapse:collapse;font-size:13px}
+.pd-cal th,.pd-cal td{text-align:left;padding:6px 8px;border-top:1px solid var(--pd-line);white-space:nowrap}
+.pd-cal th{color:var(--pd-mut);font-weight:500;font-size:12px}
+.pd-cal .stars{color:#e0a106;letter-spacing:1px}
