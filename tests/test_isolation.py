@@ -123,9 +123,19 @@ check("找模板：base 优先、不把账户副本当模板", T.find_templates(
 # servers.dat 导入（只读）+ 放入副本一次
 src = tmp / "desk" / "Config"
 src.mkdir(parents=True)
-(src / "servers.dat").write_bytes(b"D" * 200)
+def _srv(n):
+    h = bytearray(0x1AC)
+    h[0:4] = (503).to_bytes(4, "little")
+    c = "Copyright 2000-2026, MetaQuotes Ltd.".encode("utf-16-le")
+    h[4:4+len(c)] = c
+    sv = "Servers".encode("utf-16-le")
+    h[0x84:0x84+len(sv)] = sv
+    h[0xAC:0xB0] = int(n).to_bytes(4, "little")
+    return bytes(h) + b"D" * 64
+blob = _srv(56)
+(src / "servers.dat").write_bytes(blob)
 ok, msg, meta = T.import_servers_dat(str(src / "servers.dat"), tmp / "lib")
-check("导入 servers.dat", ok and (tmp / "lib" / "servers.dat").read_bytes() == b"D" * 200, msg)
+check("导入 servers.dat", ok and (tmp / "lib" / "servers.dat").read_bytes() == blob and meta.get("count") == 56, msg)
 check("servers.dat 候选", T.servers_dat_candidates(str(tmp / "desk"))[0]["path"].endswith("servers.dat"))
 p4 = str(root / "444444" / "terminal64.exe")
 check("放入副本并备份原文件", T.apply_servers_dat(p4, tmp / "lib" / "servers.dat") and (root / "444444" / "Config" / "servers.dat.fleetbak").read_bytes() == b"S" * 100)
