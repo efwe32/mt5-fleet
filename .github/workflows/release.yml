@@ -35,6 +35,6 @@ jobs:
           if gh release view "v$VER" >/dev/null 2>&1; then
             echo "v$VER 已经发布过，跳过"
           else
-            gh release create "v$VER" "dist/mt5-fleet-app-$VER.zip" dist/mt5-fleet-manifest.json dist/latest.json \
+            gh release create "v$VER" "dist/mt5-fleet-app-$VER.zip" dist/mt5-fleet-manifest.json dist/latest.json dist/mt5-servers.dat \
               --title "v$VER" --notes-file dist/notes.md --latest --target "$GITHUB_SHA"
           fi
