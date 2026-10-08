@@ -526,6 +526,13 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
             raise HTTPException(400, r.get("message", "导入失败"))
         return r
 
+    @app.post("/api/tools/fix_servers")
+    def fix_servers(body: dict):
+        r = fleet.fix_servers()
+        if not r.get("ok"):
+            raise HTTPException(400, r.get("message", "修复失败"))
+        return r
+
     @app.post("/api/tools/template")
     def template(body: dict):
         return fleet.template_info(force=True)

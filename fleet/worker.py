@@ -316,8 +316,8 @@ class Worker:
                 pass
         lib = self.data_dir / "servers" / "servers.dat"
         note = ""
-        try:
-            note = T.apply_servers_dat(path, lib)
+        try:   # 原先能正常登录的账户不动它的服务器列表；新账户 / 登录失败过的才放入
+            note = "" if self.acc.get("_worked") else T.apply_servers_dat(path, lib)
         except Exception as e:
             note = f"放入服务器列表失败：{e}"
         creds = {"login": self.acc["login"], "password": self.password, "server": self.acc["server"]} if self.password else None

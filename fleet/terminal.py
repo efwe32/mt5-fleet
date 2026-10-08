@@ -404,6 +404,7 @@ TEMPLATE_SKIP = {".venv", "venv", "data", "data_mock", "build", "dist", "__pycac
 
 
 PORTABLE_MARKER = ".mt5fleet-portable"     # 便携版文件夹里的标记文件
+PREFERRED_TEMPLATE = "MT5模板"             # 程序目录里优先使用的模板文件夹名（便携版也用这个名字）
 
 
 def is_app_copy(d: Path) -> bool:
@@ -437,7 +438,43 @@ def find_templates(app_dir: Path, troot: Path, max_depth: int = 4) -> list[Path]
                        and not (os.path.normcase(str(d)) == os.path.normcase(str(troot)) and n.lower() != "base")]
         if "terminal64.exe" in [f.lower() for f in filenames] and d not in found:
             found.append(d)
-    return found
+    head = [x for x in found if x == base]
+    rest = [x for x in found if x != base]
+
+    def rank(d: Path):
+        try:
+            mt = (d / "terminal64.exe").stat().st_mtime
+        except OSError:
+            mt = 0
+        # 「MT5模板」优先（新版模板放这里），其余按 terminal64.exe 新旧排序（新的优先）
+        return (0 if d.name == PREFERRED_TEMPLATE else 1, -mt)
+    return head + sorted(rest, key=rank)
+
+
+def exe_version(path) -> str:
+    """（只读）exe 的文件版本，例如 5.0.0.6246；读不到返回空。"""
+    if sys.platform != "win32":
+        return ""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        ver = ctypes.windll.version
+        size = ver.GetFileVersionInfoSizeW(str(path), None)
+        if not size:
+            return ""
+        buf = ctypes.create_string_buffer(size)
+        if not ver.GetFileVersionInfoW(str(path), 0, size, buf):
+            return ""
+        ptr, ln = ctypes.c_void_p(), wintypes.UINT()
+        if not ver.VerQueryValueW(buf, "\\", ctypes.byref(ptr), ctypes.byref(ln)) or not ptr.value:
+            return ""
+
+        class _VS(ctypes.Structure):
+            _fields_ = [("sig", wintypes.DWORD), ("sv", wintypes.DWORD), ("ms", wintypes.DWORD), ("ls", wintypes.DWORD)]
+        vs = ctypes.cast(ptr, ctypes.POINTER(_VS)).contents
+        return f"{vs.ms >> 16}.{vs.ms & 0xFFFF}.{vs.ls >> 16}.{vs.ls & 0xFFFF}"
+    except Exception:
+        return ""
 
 
 # ---------------- 服务器列表 servers.dat（只读导入） ----------------
@@ -472,6 +509,19 @@ def appdata_data_dirs() -> list[tuple[Path, str]]:
     return out
 
 
+def servers_dat_count(path) -> int:
+    """servers.dat 里的服务器条目数（只读文件头；-1 = 不是 servers.dat 或读不出来）。"""
+    try:
+        with open(path, "rb") as f:
+            h = f.read(0xB0)
+    except OSError:
+        return -1
+    if len(h) < 0xB0 or h[4:8] != "Co".encode("utf-16-le") or "Servers".encode("utf-16-le") not in h[0x80:0xA4]:
+        return -1
+    n = int.from_bytes(h[0xAC:0xB0], "little")
+    return n if 0 <= n < 100000 else -1
+
+
 def servers_dat_candidates(folder: str) -> list[dict]:
     """某个 MT5 文件夹（安装目录或数据目录）对应的 servers.dat，可能有多份，按修改时间新→旧。"""
     out = []
@@ -491,10 +541,10 @@ def servers_dat_candidates(folder: str) -> list[dict]:
     for c in out:
         try:
             st = c.stat()
-            rows.append({"path": str(c), "size": st.st_size, "mtime": int(st.st_mtime)})
+            rows.append({"path": str(c), "size": st.st_size, "mtime": int(st.st_mtime), "count": servers_dat_count(c)})
         except OSError:
             pass
-    rows.sort(key=lambda r: -r["mtime"])
+    rows.sort(key=lambda r: (-r["count"], -r["mtime"]))   # 服务器最多的优先，其次最新
     return rows
 
 
@@ -551,7 +601,7 @@ def scan_mt5_installs(extra_roots: list[str] | None = None, budget: float = 4.0,
             seen.setdefault(os.path.normcase(str(d)), {
                 "path": str(d), "kind": "数据目录", "origin": origin,
                 "servers": (servers_dat_candidates(str(d)) or [None])[0], "running": False})
-    return sorted(seen.values(), key=lambda x: (x["servers"] is None, x["path"].lower()))
+    return sorted(seen.values(), key=lambda x: (x["servers"] is None, -((x["servers"] or {}).get("count") or 0), x["path"].lower()))
 
 
 def import_servers_dat(src_file: str, lib_dir: Path) -> tuple[bool, str, dict]:
@@ -572,7 +622,9 @@ def import_servers_dat(src_file: str, lib_dir: Path) -> tuple[bool, str, dict]:
     tmp.write_bytes(data)
     os.replace(tmp, dst)
     digest = hashlib.sha1(data).hexdigest()[:16]
-    return True, f"已导入服务器列表（{size} 字节）", {"source": str(src), "size": size, "hash": digest, "at": int(time.time())}
+    cnt = servers_dat_count(dst)
+    what = f"{cnt} 个服务器" if cnt >= 0 else f"{size} 字节"
+    return True, f"已导入服务器列表（{what}）", {"source": str(src), "size": size, "hash": digest, "at": int(time.time()), "count": cnt}
 
 
 def apply_servers_dat(terminal_path: str, lib_file: Path) -> str:
@@ -591,6 +643,9 @@ def apply_servers_dat(terminal_path: str, lib_file: Path) -> str:
         pass
     cfg.mkdir(parents=True, exist_ok=True)
     dst = cfg / "servers.dat"
+    have, new_n = (servers_dat_count(dst) if dst.exists() else -1), servers_dat_count(lib_file)
+    if have >= 0 and new_n >= 0 and have > new_n:     # 这个终端自己的列表更全：不替换
+        return ""
     bak = cfg / "servers.dat.fleetbak"
     if dst.exists() and not bak.exists():
         shutil.copy2(dst, bak)
