@@ -21,7 +21,7 @@ from . import terminal as T
 from .config import Store, app_root, terminals_root
 from .procs import Registry
 from . import alerts
-from . import calendar as cal
+from .remote import RemoteGate
 from . import quote as fx
 from .worker import worker_main
 
@@ -65,7 +65,7 @@ class Fleet:
         self.alert_seq = 0
         self.alert_popup = None
         self.quote: dict | None = None
-        self.calendar: dict = {"events": [], "error": "", "at": 0}
+        self.remote = RemoteGate(store)
         self._load_alerts()
         self.registry = Registry(store.data_dir)   # 本程序启动的终端 PID
         self.root = terminals_root()
@@ -111,7 +111,6 @@ class Fleet:
         threading.Thread(target=self._watchdog, daemon=True).start()
         threading.Thread(target=self._desk_loop, daemon=True).start()
         threading.Thread(target=self._quote_loop, daemon=True).start()
-        threading.Thread(target=self._calendar_loop, daemon=True).start()
         self.reattach_ids = self.running_terminal_accounts() if not mock else []
         if self.reattach_ids and store.settings.get("auto_reattach", True):
             threading.Thread(target=self._reattach, daemon=True).start()
@@ -1525,18 +1524,6 @@ class Fleet:
                 self.quote = {"symbol": "USDJPY", "price": 0, "change": 0, "source": "", "error": str(e),
                               "at": int(time.time() * 1000)}
 
-    def _calendar_loop(self):
-        time.sleep(1.5)
-        while not self._stop:
-            try:
-                self.calendar = cal.load()
-            except Exception as e:
-                self.calendar = {"events": [], "error": f"读取金十日历失败：{e}", "at": time.time(), "source": "jin10"}
-            for _ in range(600):
-                if self._stop:
-                    return
-                time.sleep(1)
-
     # ---------------- 状态 ----------------
     def state(self) -> dict:
         accounts = []
@@ -1568,14 +1555,10 @@ class Fleet:
         popup = self.alert_popup
         if popup and int(time.time() * 1000) - int(popup.get("at") or 0) > alerts.POPUP_MS:
             popup = None
-        return {"accounts": accounts, "settings": self.store.settings, "banner": self.banner, "mock": self.mock,
+        settings = {k: v for k, v in self.store.settings.items() if k != "remote_pass_hash"}
+        return {"accounts": accounts, "settings": settings, "banner": self.banner, "mock": self.mock,
                 "alerts": list(self.alerts), "alertPopup": popup, "popupMs": alerts.POPUP_MS,
-                "quote": self.quote, "calendar": {
-                    "events": list((self.calendar or {}).get("events") or []),
-                    "error": (self.calendar or {}).get("error") or "",
-                    "at": int(((self.calendar or {}).get("at") or 0) * 1000),
-                    "minStar": cal.MIN_STAR,
-                },
+                "quote": self.quote, "remote": self.remote.public(),
                 "mt5Error": self.mt5_import_error, "dpapi": secrets.dpapi_supported(),
                 "library": self.library(), "firstLaunch": self.store.first_launch,
                 "terminalsRoot": str(self.root), "dataDir": str(self.store.data_dir), "now": int(time.time() * 1000),
@@ -1602,6 +1585,10 @@ class Fleet:
         if self.store.settings.get("close_terminals_on_exit") and not self.mock:
             self.close_owned_terminals()
         self._stop = True
+        try:
+            self.remote.stop()
+        except Exception:
+            pass
         self.store.save_accounts()
 
     def close_owned_terminals(self) -> list[str]:

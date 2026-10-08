@@ -18,6 +18,7 @@ from .manager import QUICK_ACTIONS, Fleet, QuickBusy
 from . import terminal as T
 from . import __version__
 from .updater import UpdateError
+from .remote import check_password as _check_remote_password
 
 EXAMPLE_CSV = ("alias,login,password,server,group,terminal_path,symbol_suffix,lot_multiplier\r\n"
                "主仓 · 黄金,51002811,你的密码,ICMarketsSC-MT5,主仓,,,1\r\n"
@@ -66,21 +67,82 @@ def parse_quick(text: str) -> tuple[list[dict], list[str]]:
     return rows, errors
 
 
+REMOTE_LOGIN_HTML = """<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>远程访问</title>
+<style>
+body{margin:0;background:#12140f;color:#f3f0e4;font-family:"Microsoft YaHei","PingFang SC",sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center}
+form{width:min(420px,calc(100% - 32px));background:#1b1e16;border:1px solid #3a3f32;border-radius:12px;padding:20px}
+h1{font-size:18px;margin:0 0 8px}p{color:#b4b09a;font-size:13px;line-height:1.5}
+input{width:100%;box-sizing:border-box;height:48px;border-radius:8px;border:1px solid #3a3f32;background:#12140f;color:#f3f0e4;padding:0 12px;font-size:16px}
+button{width:100%;height:48px;margin-top:12px;border:0;border-radius:8px;background:#e0b15a;color:#1c1408;font-weight:700;font-size:16px}
+.err{color:#ef8b74;min-height:1.2em;font-size:13px}
+</style></head><body>
+<form id="f"><h1>MT5 批量终端</h1><p>这是加密的远程入口。输入这台电脑上设置的远程密码。交易账户的密码不会出现在这个页面里。</p>
+<input id="pw" type="password" autocomplete="current-password" placeholder="远程密码" autofocus>
+<div class="err" id="e"></div><button type="submit">进入</button></form>
+<script>
+document.getElementById("f").onsubmit=async function(ev){ev.preventDefault();
+ const e=document.getElementById("e"); e.textContent="正在核对…";
+ try{const r=await fetch("/api/remote/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:document.getElementById("pw").value})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){e.textContent=d.detail||"没有通过";return;}
+  location.replace("/");
+ }catch(err){e.textContent="网络中断";}};
+</script></body></html>"""
+
 def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
     app = FastAPI(title="MT5 Fleet", docs_url=None, redoc_url=None, openapi_url=None)
     token = pysecrets.token_urlsafe(24)
     app.state.token = token
+    app.state.remote_port = 0
     busy = threading.Lock()
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}", "127.0.0.1", "localhost"}
+
+    def _client_ip(request: Request) -> str:
+        ip = (request.headers.get("cf-connecting-ip") or "").strip()
+        if not ip:
+            ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        if not ip and request.client:
+            ip = request.client.host or ""
+        return ip or "remote"
+
+    def _remote_port(request: Request) -> bool:
+        srv = request.scope.get("server") or ("", 0)
+        rp = int(getattr(app.state, "remote_port", 0) or 0)
+        try:
+            return rp and int(srv[1]) == rp
+        except (TypeError, ValueError):
+            return False
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
         # 防 DNS 重绑定 + 防其它网页跨站调用（需要页面里的随机令牌）
-        if request.headers.get("host", "") not in allowed_hosts:
+        if _remote_port(request):
+            if not fleet.remote.enabled():
+                return PlainTextResponse("远程访问已关闭", status_code=403)
+            path = request.url.path
+            if path == "/api/remote/login":
+                return await call_next(request)
+            if path.startswith("/static/"):
+                return await call_next(request)
+            if not fleet.remote.valid_session(request.cookies.get("fleet_remote")):
+                if path.startswith("/api/"):
+                    return JSONResponse({"detail": "请先输入远程密码"}, status_code=401)
+                if path in ("/", ""):
+                    return HTMLResponse(REMOTE_LOGIN_HTML, headers={"Cache-Control": "no-store"})
+                return PlainTextResponse("请先输入远程密码", status_code=401)
+            if path.startswith("/api/"):
+                got = request.headers.get("x-fleet-token") or request.query_params.get("token")
+                if got != token:
+                    return JSONResponse({"detail": "令牌无效，请刷新页面"}, status_code=401)
+            return await call_next(request)
+        host = request.headers.get("host", "")
+        if host not in allowed_hosts:
             return PlainTextResponse("forbidden host", status_code=403)
         if request.url.path.startswith("/api/"):
-            t = request.headers.get("x-fleet-token") or request.query_params.get("token")
-            if t != token:
+            got = request.headers.get("x-fleet-token") or request.query_params.get("token")
+            if got != token:
                 return JSONResponse({"detail": "令牌无效，请刷新页面"}, status_code=401)
         return await call_next(request)
 
@@ -142,10 +204,26 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
             raise HTTPException(400, msg)
         return {"ok": True, "message": msg}
 
-    @app.get("/api/calendar")
-    def calendar():
-        c = fleet.calendar or {}
-        return {"events": c.get("events") or [], "error": c.get("error") or "", "minStar": 4}
+    @app.post("/api/remote/login")
+    def remote_login(request: Request, body: dict):
+        if not _remote_port(request):
+            raise HTTPException(404, "没有这个接口")
+        if not fleet.remote.enabled():
+            raise HTTPException(403, "远程访问已关闭")
+        ip = _client_ip(request)
+        if fleet.remote.locked(ip):
+            left = max(1, fleet.remote.lock_left(ip) // 60)
+            raise HTTPException(429, f"密码错误次数过多，请 {left} 分钟后再试")
+        if not fleet.remote.has_password() or not _check_remote_password(str(body.get("password") or ""), fleet.store.settings.get("remote_pass_hash") or ""):
+            locked = fleet.remote.fail(ip)
+            if locked:
+                raise HTTPException(429, "密码错误次数过多，请 10 分钟后再试")
+            raise HTTPException(401, "远程密码错误")
+        fleet.remote.succeed(ip)
+        sid = fleet.remote.new_session()
+        resp = JSONResponse({"ok": True})
+        resp.set_cookie("fleet_remote", sid, max_age=12 * 3600, httponly=True, secure=True, samesite="lax", path="/")
+        return resp
 
     # ---------- 账户 ----------
     @app.post("/api/accounts")
@@ -517,9 +595,23 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
                 raise HTTPException(400, "模板不能用某个账户的终端副本，请填原始 MT5 目录或 terminals\\base")
             s["template_dir"] = t
             fleet.template_info(force=True)
+        pw = body.get("remote_password")
+        if isinstance(pw, str) and pw != "":
+            if len(pw) < 6:
+                raise HTTPException(400, "远程密码至少 6 位")
+            fleet.remote.set_password(pw)
+        if "remote_enabled" in body:
+            on = bool(body.get("remote_enabled"))
+            if on and not fleet.remote.has_password():
+                raise HTTPException(400, "请先设置远程密码，再打开远程访问")
+            s["remote_enabled"] = on
         fleet.store.first_launch = False
         fleet.store.save_settings()
-        return s
+        if s.get("remote_enabled") and fleet.remote.has_password():
+            fleet.remote.open()
+        else:
+            fleet.remote.stop()
+        return {k: v for k, v in s.items() if k != "remote_pass_hash"}
 
     # ---------- 工具 ----------
     @app.post("/api/tools/check_path")
