@@ -397,6 +397,51 @@ class Worker:
         self.status()
 
     # ---------------- 轮询 ----------------
+
+    def usdjpy_quote(self) -> dict | None:
+        """已登录终端上的 USDJPYc / USDJPY。15 秒缓存，失败不影响账户轮询。"""
+        now = time.time()
+        cached = getattr(self, "_uj_cache", None)
+        if cached and now - cached[0] < 15:
+            return cached[1]
+        q = None
+        try:
+            q = self._usdjpy_once()
+        except Exception:
+            q = None
+        self._uj_cache = (now, q)
+        return q
+
+    def _usdjpy_once(self) -> dict | None:
+        mt5 = self.mt5
+        if mt5 is None:
+            return None
+        for name in ("USDJPYc", "USDJPY"):
+            try:
+                if not mt5.symbol_select(name, True):
+                    continue
+                tick = mt5.symbol_info_tick(name)
+                if tick is None or not getattr(tick, "bid", 0):
+                    continue
+                info = mt5.symbol_info(name)
+                prev = 0.0
+                tf = getattr(mt5, "TIMEFRAME_H1", 16385)
+                rates = None
+                fn = getattr(mt5, "copy_rates_from_pos", None)
+                if fn:
+                    rates = fn(name, tf, 0, 25)
+                if rates is not None and len(rates) >= 2:
+                    bar = rates[0]
+                    try:
+                        prev = float(bar["close"])
+                    except Exception:
+                        prev = float(bar[4])
+                return {"symbol": name, "bid": float(tick.bid), "prev": prev,
+                        "digits": int(getattr(info, "digits", 3) or 3)}
+            except Exception:
+                continue
+        return None
+
     def snapshot(self) -> dict:
         mt5 = self.mt5
         info = mt5.account_info()
@@ -447,6 +492,7 @@ class Worker:
                 "ping_ms": round(getattr(ti, "ping_last", 0) / 1000, 1) if ti else 0,
             },
             "quotes": quotes,
+            "usdjpy": self.usdjpy_quote(),
         }
 
     def terminal_gone(self) -> bool:
@@ -1013,6 +1059,16 @@ class Worker:
     # ---------------- 主循环 ----------------
     def handle(self, cmd: dict):
         name, req, params = cmd.get("cmd"), cmd.get("req"), cmd.get("params") or {}
+        if name == "set_float" and self.mock:
+            try:
+                self.mt5._force_profit = float(params.get("floating"))
+            except (TypeError, ValueError):
+                self.emit(type="result", req=req, ok=False, message="浮亏金额不对")
+                return
+            if self.link == "online":
+                self.poll()
+            self.emit(type="result", req=req, ok=True, message="已设置测试浮亏")
+            return
         if name == "update_account":
             self.acc.update(cmd.get("account") or {})
             self._sym_cache = {}          # 后缀 / 品种映射可能改了

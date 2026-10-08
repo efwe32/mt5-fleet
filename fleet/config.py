@@ -67,6 +67,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "update_url": "",            # 在线更新：自定义更新地址（latest.json 直链，GitHub 打不开时用）
     "update_mirror": True,       # github.com 下载慢时改走加速镜像（内容按 sha256 校验）
     "update_auto_check": True,   # 打开网页时检查有没有新版本（只提示，不会自动安装）
+    "alert_loss": 3000,         # 单个账户浮亏达到这个金额（账户货币）时警报，查看后取消
 }
 
 
