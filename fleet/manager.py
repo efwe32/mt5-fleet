@@ -424,6 +424,7 @@ class Fleet:
     def _spawn(self, a: dict, req: str):
         cmd_q = CTX.Queue()
         acc = {k: v for k, v in a.items() if k not in ("password", "last")}
+        acc["_worked"] = bool(a.get("last"))      # 原先登录成功过：不替换它终端里的服务器列表
         try:
             pw = self.store.password_of(a)
         except Exception as e:
@@ -518,6 +519,8 @@ class Fleet:
                     "error": "" if c else "没有在程序目录里找到 MT5（terminal64.exe）。请在设置页填写「模板 MT5 目录」，"
                                           "或把 MT5 安装到 terminals\\base"}
         info["running"] = bool(info["path"]) and not self.mock and T.is_running(os.path.join(info["path"], "terminal64.exe"))
+        info["version"] = T.exe_version(os.path.join(info["path"], "terminal64.exe")) if info["path"] else ""
+        info["servers"] = T.servers_dat_count(os.path.join(info["path"], "Config", "servers.dat")) if info["path"] else -1
         self._tpl, self._tpl_at = info, now
         return info
 
@@ -575,6 +578,83 @@ class Fleet:
               (f"，{waiting} 个正在运行的会在下次由本程序启动时放入" if waiting else "") + "；新建的副本会自动带上"
         self.log("", "导入服务器列表", True, msg, "本机")
         return {"ok": True, "message": msg, **meta}
+
+    def servers_lib_count(self) -> int:
+        lib = self.store.data_dir / "servers" / "servers.dat"
+        return T.servers_dat_count(lib) if lib.is_file() else -1
+
+    def failing_ids(self) -> list[str]:
+        """登录失败 / 从来没登录成功过、现在也不在线的账户（「原先能用」的账户不算）。"""
+        out = []
+        with self.lock:
+            for a in self.store.accounts:
+                if not a["enabled"]:
+                    continue
+                rt = self.runtime.get(a["id"], {})
+                if rt.get("link") == "online" and self._alive(a["id"]):
+                    continue
+                if rt.get("link") == "error" or not a.get("last"):
+                    out.append(a["id"])
+        return out
+
+    def fix_servers(self) -> dict:
+        """一键修复服务器列表：在本机（模板 + 已有的 MT5）找服务器条目最多的 servers.dat，只读复制到本程序；
+        再放进登录失败 / 没登录成功过的账户终端（没在运行的）。正常在用的账户不动。"""
+        if self.mock:
+            return {"ok": False, "message": "模拟模式不需要服务器列表"}
+        lib = self.store.data_dir / "servers" / "servers.dat"
+        cur = self.servers_lib_count()
+        cands = []
+        tpl = self.template_info(force=True).get("path")
+        if tpl and not T.is_under(os.path.join(tpl, "x"), self.root):
+            cands += [dict(r, owner=tpl) for r in T.servers_dat_candidates(tpl)]
+        try:
+            for it in T.scan_mt5_installs(budget=6.0, troot=self.root):
+                if it.get("servers"):
+                    cands.append(dict(it["servers"], owner=it.get("origin") or it["path"]))
+        except Exception:
+            pass
+        cands = [c for c in cands if c.get("count", -1) > 0 and not T.is_under(c["path"], self.root)]
+        if not cands and cur <= 0:
+            return {"ok": False, "message": "没有在这台电脑上找到带服务器列表的 MT5。请先在任意一个 MT5 里登录 / 搜索一次你的券商，"
+                                            "或在下面「从已有 MT5 导入服务器列表」手动选择"}
+        best = max(cands, key=lambda c: (c["count"], c["mtime"])) if cands else None
+        parts = []
+        if best and best["count"] > cur:
+            ok, msg, meta = T.import_servers_dat(best["path"], lib.parent)
+            if not ok:
+                self.log("", "修复服务器列表", False, msg, "本机")
+                return {"ok": False, "message": msg}
+            self.store.settings["servers_import"] = meta
+            self.store.save_settings()
+            parts.append(f"已从 {best['owner']} 导入 {best['count']} 个服务器（只读复制，原来的 MT5 没有改动）")
+            cur = best["count"]
+        else:
+            parts.append(f"本程序的服务器列表已经是这台电脑上最全的（{cur} 个服务器）")
+        failing = self.failing_ids()
+        applied, busy = 0, 0
+        for i in failing:
+            a = self.store.get(i)
+            p = (a or {}).get("terminal_path") or ""
+            if not p or not os.path.isfile(p) or self._alive(i):
+                continue
+            if T.is_running(p):
+                busy += 1
+                continue
+            try:
+                if T.apply_servers_dat(p, lib):
+                    applied += 1
+            except Exception:
+                pass
+        if failing:
+            parts.append(f"{len(failing)} 个登录失败 / 还没登录成功的账户：已更新 {applied} 个终端的服务器列表"
+                         + (f"，{busy} 个终端正在运行（下次由本程序启动时更新）" if busy else ""))
+        else:
+            parts.append("现在没有登录失败的账户")
+        parts.append("正常在用的账户没有改动；以后新建的终端会自动带上")
+        msg = "；".join(parts)
+        self.log("", "修复服务器列表", True, msg, "本机")
+        return {"ok": True, "message": msg, "count": cur, "retry": failing}
 
     # ---------------- 登录 ----------------
     def _login_ids(self, ids: list[str], finish: bool = True) -> dict:
@@ -1226,6 +1306,7 @@ class Fleet:
         a = self.store.get(acc_id)
         if a and self._alive(acc_id):
             acc = {k: v for k, v in a.items() if k not in ("password", "last")}
+            acc["_worked"] = bool(a.get("last"))
             self.workers[acc_id]["cmd_q"].put({"cmd": "update_account", "account": acc, "password": password})
 
     def toggle_enabled(self, acc_id: str):
@@ -1283,7 +1364,7 @@ class Fleet:
                 "library": self.library(), "firstLaunch": self.store.first_launch,
                 "terminalsRoot": str(self.root), "dataDir": str(self.store.data_dir), "now": int(time.time() * 1000),
                 "progress": self.prog, "servers": self.server_names(), "template": self.template_info(),
-                "serversImport": self.store.settings.get("servers_import")}
+                "serversImport": self.store.settings.get("servers_import"), "serversLib": self.servers_lib_count()}
 
     def library(self):
         lib = self.store.data_dir / "ea_library"

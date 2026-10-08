@@ -324,9 +324,9 @@
         </div>
         <div class="panel">
           <h2>服务器列表</h2>
-          <p class="small muted" style="margin:4px 0 12px">新复制的终端可能还不认识你的券商服务器（登录报「授权失败」）。可以从你电脑上已经登录过这个券商的 MT5 导入服务器列表：只读复制它的 <span class="num">Config\servers.dat</span>，不会改动那份 MT5。</p>
+          <p class="small muted" style="margin:4px 0 12px">登录报「授权失败」、找不到服务器时，点「一键修复服务器列表」：自动在这台电脑上（模板和已有的 MT5）找<b>服务器最全</b>的 <span class="num">Config\servers.dat</span>，只读复制到本程序，再放进登录失败的账户终端，然后可以直接重新登录。<b>正常在用的账户不会改动</b>，也不会改动、关闭你桌面上的 MT5。</p>
           <p class="small" id="srvInfo" style="margin:0 0 12px"></p>
-          <div class="row"><button class="btn" data-act="import-servers">从已有 MT5 导入服务器列表…</button></div>
+          <div class="row"><button class="btn primary" data-act="fix-servers">一键修复服务器列表</button><button class="btn" data-act="import-servers">手动选择 MT5 导入…</button></div>
         </div>
         <div class="panel">
           <h2>默认品种与图表</h2>

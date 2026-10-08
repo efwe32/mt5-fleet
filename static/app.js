@@ -300,7 +300,7 @@ function tplNote() {
 function srvNote() {
   const si = ui.state.serversImport;
   return si ? `<span class="small faint">服务器列表：已从 <span class="num">${esc(si.source)}</span> 导入</span>`
-    : `<span class="small faint">新副本找不到券商服务器时，可在设置页「从已有 MT5 导入服务器列表」。</span>`;
+    : `<span class="small faint">登录报「授权失败」、找不到服务器时，可在设置页点「一键修复服务器列表」。</span>`;
 }
 function quickForm() {
   let mode = "one";
@@ -831,20 +831,23 @@ async function updStartup() {
 
 function renderSettingsInfo() {
   const st = ui.state; if (!st) return;
-  once("setinfo", [st.template, st.serversImport], () => {
+  once("setinfo", [st.template, st.serversImport, st.serversLib], () => {
     const t = st.template || {};
-    $("#tplInfo").innerHTML = t.path ? `<span class="up-t">✓ 模板：</span><span class="num">${esc(t.path)}</span>${t.auto ? "（自动找到）" : ""}${t.running ? '<span class="muted"> · 这份 MT5 正在运行，复制时只读取文件，不会关闭或改动它</span>' : ""}`
+    const build = t.version ? ` · MT5 build ${esc(t.version.split(".").pop())}` : "";
+    const tsrv = t.servers > 0 ? ` · ${t.servers} 个服务器` : "";
+    $("#tplInfo").innerHTML = t.path ? `<span class="up-t">✓ 模板：</span><span class="num">${esc(t.path)}</span>${t.auto ? "（自动找到）" : ""}<span class="muted">${build}${tsrv}</span>${t.running ? '<span class="muted"> · 这份 MT5 正在运行，复制时只读取文件，不会关闭或改动它</span>' : ""}`
       : `<span class="down-t">${esc(t.error || "没有找到模板 MT5")}</span>`;
     const si = st.serversImport;
-    $("#srvInfo").innerHTML = si ? `<span class="up-t">✓ 已导入</span>：<span class="num">${esc(si.source)}</span> · ${si.size} 字节 · ${new Date(si.at * 1000).toLocaleString("zh-CN", { hour12: false })}`
-      : `<span class="muted">还没有导入。新副本会带上模板里的服务器列表；找不到服务器时再导入。</span>`;
+    const tplLine = t.servers > 0 ? `模板自带 <b>${t.servers}</b> 个服务器（新建的终端会带上）。` : "";
+    $("#srvInfo").innerHTML = si ? `${tplLine}<span class="up-t">✓ 已导入 ${st.serversLib > 0 ? st.serversLib + " 个服务器" : ""}</span>：<span class="num">${esc(si.source)}</span> · ${new Date(si.at * 1000).toLocaleString("zh-CN", { hour12: false })}`
+      : `<span class="muted">${tplLine}还没有另外导入；找不到服务器时点「一键修复服务器列表」。</span>`;
   });
 }
 function importServersDialog() {
   let chosen = "";
   modal({
     title: "从已有 MT5 导入服务器列表", wide: true,
-    desc: "选择一份已经登录过你券商账户的 MT5（例如桌面上在用的那份）。只会<b>只读复制</b>它的 servers.dat 到本程序，不会改动、关闭那份 MT5。",
+    desc: "选择一份已经登录过你券商账户的 MT5（例如桌面上在用的那份），列表按服务器数量从多到少排列。只会<b>只读复制</b>它的 servers.dat 到本程序，不会改动、关闭那份 MT5。",
     body: `<div id="srcList"><p class="small muted"><span class="spin"></span> 正在查找电脑上的 MT5…</p></div>
       <label class="field"><span>或手动填写 MT5 文件夹（安装目录，或在 MT5 里「文件 → 打开数据文件夹」打开的文件夹）</span>
         <div class="split"><input class="input" id="srcPath" placeholder="例如 D:\\MT5\\IC Markets"><button class="btn" type="button" id="srcCheck">检测</button></div></label>
@@ -861,20 +864,35 @@ function importServersDialog() {
       $("#srcCheck", root).onclick = async () => {
         const path = $("#srcPath", root).value.trim(); if (!path) return;
         try { const r = await api("/api/tools/servers_check", { path });
-          $("#srcInfo", root).innerHTML = r.items.length ? `<span class="up-t">找到 ${r.items.length} 份 servers.dat</span>，将导入最新的一份：<span class="num">${esc(r.items[0].path)}</span>` : `<span class="down-t">这个文件夹里没有找到 Config\\servers.dat</span>`;
+          $("#srcInfo", root).innerHTML = r.items.length ? `<span class="up-t">找到 ${r.items.length} 份 servers.dat</span>，将导入服务器最多的一份${r.items[0].count > 0 ? `（${r.items[0].count} 个服务器）` : ""}：<span class="num">${esc(r.items[0].path)}</span>` : `<span class="down-t">这个文件夹里没有找到 Config\\servers.dat</span>`;
         } catch (e) { toast(e.message, true); }
       };
       try {
         const r = await api("/api/tools/mt5_sources");
         const box = $("#srcList", root); if (!box) return;
         const items = r.items.filter((x) => x.servers);
-        box.innerHTML = items.length ? `<div class="small muted" style="margin-bottom:6px">找到 ${items.length} 份带服务器列表的 MT5：</div><div style="display:flex;flex-direction:column;gap:6px">${items.map((x, k) => `<label class="src"><input type="radio" name="src" value="${esc(x.servers.path)}" ${k ? "" : "checked"}><div style="min-width:0"><div class="p">${esc(x.path)}</div><div class="sub">${esc(x.kind)}${x.origin ? ` · 对应 ${esc(x.origin)}` : ""} · servers.dat ${x.servers.size} 字节 · ${new Date(x.servers.mtime * 1000).toLocaleString("zh-CN", { hour12: false })}${x.running ? " · 正在运行（只读复制，不影响它）" : ""}</div></div></label>`).join("")}</div>`
+        box.innerHTML = items.length ? `<div class="small muted" style="margin-bottom:6px">找到 ${items.length} 份带服务器列表的 MT5：</div><div style="display:flex;flex-direction:column;gap:6px">${items.map((x, k) => `<label class="src"><input type="radio" name="src" value="${esc(x.servers.path)}" ${k ? "" : "checked"}><div style="min-width:0"><div class="p">${esc(x.path)}</div><div class="sub">${esc(x.kind)}${x.origin ? ` · 对应 ${esc(x.origin)}` : ""} · ${x.servers.count > 0 ? `<b>${x.servers.count} 个服务器</b>` : `servers.dat ${x.servers.size} 字节`} · ${new Date(x.servers.mtime * 1000).toLocaleString("zh-CN", { hour12: false })}${x.running ? " · 正在运行（只读复制，不影响它）" : ""}</div></div></label>`).join("")}</div>`
           : `<p class="small muted">没有自动找到其它 MT5，请在下面手动填写文件夹。</p>`;
         chosen = items[0]?.servers.path || "";
         box.addEventListener("change", (e) => { if (e.target.name === "src") chosen = e.target.value; });
       } catch (e) { const box = $("#srcList", root); if (box) box.innerHTML = `<p class="small down-t">${esc(e.message)}</p>`; }
     },
   });
+}
+async function fixServers(btn) {
+  if (btn) { btn.disabled = true; btn.dataset.txt = btn.textContent; btn.textContent = "正在查找…"; }
+  try {
+    const r = await api("/api/tools/fix_servers", {});
+    await poll(); ui.lastRender.setinfo = null; renderSettingsInfo();
+    const retry = (r.retry || []).filter((i) => ui.state.accounts.some((a) => a.id === i));
+    if (!retry.length) { modal({ title: "服务器列表已修复", desc: esc(r.message), actions: [{ label: "好", tone: "primary" }] }); return; }
+    const names = retry.map((i) => ui.state.accounts.find((a) => a.id === i)?.alias).filter(Boolean);
+    modal({
+      title: "服务器列表已修复", desc: `${esc(r.message)}<p style="margin-top:10px">现在重新登录这 <b>${retry.length}</b> 个账户？<br><span class="small muted">${esc(names.join("、"))}</span></p>`,
+      actions: [{ label: "稍后" }, { label: "重新登录", tone: "primary", run: () => { startProgress("重新登录", "/api/login", { ids: retry }); return true; } }],
+    });
+  } catch (e) { toast(e.message, true); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn.dataset.txt || "一键修复服务器列表"; } }
 }
 function welcome() {
   modal({ title: "欢迎使用 MT5 批量终端", desc: `<p>本程序为<b class="down-t">实盘</b>：批量下单、平仓、改单、部署策略都会真实发送到券商，每次执行前都会弹出确认，并受单笔 / 批量最大手数限制（设置页可改）。</p>
@@ -915,6 +933,7 @@ document.addEventListener("click", async (e) => {
     case "quick": return quickForm();
     case "distribute": return distForm();
     case "import-servers": return importServersDialog();
+    case "fix-servers": return fixServers(t);
     case "tpl-check": {
       try { await api("/api/settings", { template_dir: $("#setTpl").value.trim() }); const t = await api("/api/tools/template", {}); await poll(); ui.lastRender.setinfo = null; renderSettingsInfo(); t.path ? toast("模板可用") : toast(t.error, true); }
       catch (er) { toast(er.message, true); }
