@@ -831,16 +831,17 @@ async function updStartup() {
 
 function renderSettingsInfo() {
   const st = ui.state; if (!st) return;
-  once("setinfo", [st.template, st.serversImport, st.serversLib], () => {
+  once("setinfo", [st.template, st.serversImport, st.serversLib, st.serversPublished], () => {
     const t = st.template || {};
     const build = t.version ? ` · MT5 build ${esc(t.version.split(".").pop())}` : "";
     const tsrv = t.servers > 0 ? ` · ${t.servers} 个服务器` : "";
     $("#tplInfo").innerHTML = t.path ? `<span class="up-t">✓ 模板：</span><span class="num">${esc(t.path)}</span>${t.auto ? "（自动找到）" : ""}<span class="muted">${build}${tsrv}</span>${t.running ? '<span class="muted"> · 这份 MT5 正在运行，复制时只读取文件，不会关闭或改动它</span>' : ""}`
       : `<span class="down-t">${esc(t.error || "没有找到模板 MT5")}</span>`;
     const si = st.serversImport;
-    const tplLine = t.servers > 0 ? `模板自带 <b>${t.servers}</b> 个服务器（新建的终端会带上）。` : "";
-    $("#srvInfo").innerHTML = si ? `${tplLine}<span class="up-t">✓ 已导入 ${st.serversLib > 0 ? st.serversLib + " 个服务器" : ""}</span>：<span class="num">${esc(si.source)}</span> · ${new Date(si.at * 1000).toLocaleString("zh-CN", { hour12: false })}`
-      : `<span class="muted">${tplLine}还没有另外导入；找不到服务器时点「一键修复服务器列表」。</span>`;
+    const pub = st.serversPublished > 0 ? `随程序发布 <b>${st.serversPublished}</b> 个服务器（含 42 及以上，更新后自动放入）。` : "";
+    const tplLine = t.servers > 0 ? `模板里有 <b>${t.servers}</b> 个服务器（新建的终端会带上）。` : "";
+    $("#srvInfo").innerHTML = si ? `${pub}${tplLine}<span class="up-t">✓ 正在使用 ${st.serversLib > 0 ? st.serversLib + " 个服务器" : ""}</span>：<span class="num">${esc(si.source)}</span> · ${new Date(si.at * 1000).toLocaleString("zh-CN", { hour12: false })}`
+      : `<span class="muted">${pub}${tplLine}找不到服务器时点「一键修复服务器列表」。</span>`;
   });
 }
 function importServersDialog() {
