@@ -110,7 +110,8 @@ class MockMT5:
             self._err = (-6, "Terminal: Authorization failed")
             return False
         self._login = int(login)
-        self._algo = password != "noalgo"     # 测试用：模拟“算法交易没开”的终端
+        self._algo = password not in ("noalgo", "algostuck")     # 测试用：模拟“算法交易没开”的终端
+        self._algo_stuck = password == "algostuck"                 # 测试用：点「算法交易」按钮没有反应的终端
         self._server = server or "测试服务器"
         bal, seeds = SEED.get(str(login), (10000, []))
         if not self._positions and not self._deals:

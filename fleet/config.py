@@ -139,6 +139,7 @@ class Store:
             "symbol_map": (a.get("symbol_map") or "").strip(),
             "strategies": list(a.get("strategies") or []),
             "last": dict(a.get("last") or {}),
+            "algo_off": bool(a.get("algo_off")),   # 用户在交易页手动关掉了算法交易：后台重连不再自动打开
         }
 
     def get(self, acc_id: str) -> dict | None:

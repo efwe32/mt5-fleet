@@ -302,7 +302,7 @@ prog = st["progress"]
 check("添加并登录：进度四步", prog["title"] == "添加并登录" and [k for k, _ in prog["steps"]] == ["copy", "launch", "login", "algo"] and prog["done"])
 items = {prog["items"][i]["login"]: prog["items"][i] for i in prog["order"]}
 check("添加并登录：失败停在登录并有中文说明", items["9001002"]["steps"]["login"]["s"] == "fail" and "授权失败" in items["9001002"]["message"])
-check("添加并登录：算法交易未开时提醒", items["9001003"]["steps"]["algo"]["s"] == "warn" and "算法交易" in items["9001003"]["steps"]["algo"]["m"])
+check("添加并登录：算法交易没开时自动打开", items["9001003"]["steps"]["algo"]["s"] == "ok" and "已自动打开算法交易" in items["9001003"]["steps"]["algo"]["m"], items["9001003"]["steps"]["algo"])
 check("服务器名进入自动补全（坏行不算）", "Quick-Server" in st["servers"] and "2" not in st["servers"])
 r = c.post("/api/accounts/quick", json={"rows": [{"login": "9001002", "password": "good", "server": "Quick-Server"}]}).json()
 check("已在列表的账户：只更新密码并登录", r["ok"] == 1 and r["updated"] == 1 and r["added"] == 0, r["results"][0]["message"])
