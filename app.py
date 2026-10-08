@@ -221,6 +221,13 @@ def _run(args, data_dir: Path, hidden: bool, log_path):
         srv = holder.get("server")
         if srv is not None:
             srv.should_exit = True
+        rs = holder.get("remote")
+        if rs is not None:
+            rs.should_exit = True
+        try:
+            fleet.remote.stop()
+        except Exception:
+            pass
 
     from fleet.updater import Updater
 
@@ -263,6 +270,17 @@ def _run(args, data_dir: Path, hidden: bool, log_path):
 
     if not args.no_browser:
         _open_browser(url)
+
+    remote_port = port + 1
+    while remote_port < port + 20 and not _port_free(remote_port):
+        remote_port += 1
+    app.state.remote_port = remote_port
+    fleet.remote.port = remote_port
+    remote_server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=remote_port, log_level="warning"))
+    holder["remote"] = remote_server
+    threading.Thread(target=remote_server.run, name="remote-http", daemon=True).start()
+    if fleet.remote.enabled():
+        fleet.remote.open()
 
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     holder["server"] = server

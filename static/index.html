@@ -218,7 +218,6 @@
             <div class="fx" data-slot="fx">USDJPY <span class="num">—</span></div>
             <div class="alert-board" data-slot="alerts"><b>警报</b><span class="small muted">暂无</span></div>
           </div>
-          <div class="pd-card pd-cal" id="calBoard"><div class="pd-ct"><b>金十数据 · 4星及以上</b><span class="pd-rt"><a href="https://rili.jin10.com/" target="_blank" rel="noopener">rili.jin10.com</a></span></div><div class="pd-cal-body small muted">正在读取…</div></div>
           <div class="pd-card pd-head">
             <div class="pd-logo" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M9 29 L17 19 L23 24 L31 11" fill="none" stroke="#10140a" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31" cy="11" r="3.4" fill="#10140a"/></svg></div>
             <div class="pd-title">MT5 批量终端<span class="pd-bar">|</span><span class="pd-sub" id="pdSub">收益台</span></div>
@@ -331,6 +330,16 @@
             </div>
             <div class="row" style="margin-top:12px"><button class="btn primary" data-act="save-settings">保存设置</button></div>
           </details>
+        </div>
+        <div class="panel" id="remotePanel">
+          <h2>远程访问（手机）</h2>
+          <p class="small muted" style="margin:4px 0 12px">在别的地方用手机浏览器打开下面的加密地址（https），输入远程密码后，可以看收益、快捷交易、登录、分发 EA、警报和报价，和这台电脑上的页面一样。默认关闭。这台电脑自己的浏览器不用输这个密码。交易账户的密码不会出现在手机页面上。连续输错 5 次会锁定 10 分钟。关掉开关就断开。</p>
+          <div class="grid2">
+            <label class="field"><span>远程访问</span><select class="input" id="setRemote"><option value="0">关</option><option value="1">开</option></select></label>
+            <label class="field"><span>远程密码（至少 6 位，留空表示不修改）</span><input class="input" id="setRemotePw" type="password" autocomplete="new-password" placeholder="设置或修改远程密码"></label>
+          </div>
+          <p class="small" id="remoteInfo" style="margin:12px 0 0">未开启</p>
+          <div class="row" style="margin-top:12px"><button class="btn primary" data-act="save-settings">保存设置</button></div>
         </div>
         <div class="panel">
           <h2>服务器列表</h2>

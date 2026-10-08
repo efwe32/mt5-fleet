@@ -101,6 +101,17 @@ function renderBusy() {
 }
 
 
+
+function renderRemote(r) {
+  const el = $("#remoteInfo"); if (!el || !r) return;
+  let text = "未开启";
+  if (r.enabled && r.online && r.url) text = "已连接 " + r.url;
+  else if (r.enabled && r.error) text = r.error;
+  else if (r.enabled) text = "正在连接加密通道…";
+  else if (r.hasPassword) text = "已设置密码，开关是关的";
+  if (el.textContent !== text) el.textContent = text;
+}
+
 function renderQuote(q) {
   const html = !q || !q.price
     ? `USDJPY <span class="num muted">—</span><span class="src">${esc(q && q.error ? q.error : "等待报价")}</span>`
@@ -112,22 +123,6 @@ function renderAlerts(list) {
     ? `<span class="small muted">暂无</span>`
     : list.map((a) => `<span class="alert-chip"><b>警报${a.n}</b><span>${esc(a.alias)} ${esc(a.login)} 浮亏 ${Number(a.floating).toFixed(2)} ${esc(a.currency || "")} · ${tstr(a.at)}</span><button type="button" class="btn danger sm" data-act="alert-view" data-alert="${esc(a.id)}">查看</button></span>`).join(""));
   $$("[data-slot=alerts]").forEach((el) => { if (el.innerHTML !== html) el.innerHTML = html; });
-}
-function renderCalendar(cal) {
-  const el = $("#calBoard .pd-cal-body") || $("#calBoard");
-  if (!el) return;
-  const box = $("#calBoard .pd-cal-body") || el;
-  if (!cal) { box.innerHTML = `<span class="small muted">正在读取金十日历…</span>`; return; }
-  const rows = cal.events || [];
-  let html = "";
-  if (cal.error) html += `<div class="note bad" style="margin-bottom:8px">${esc(cal.error)}</div>`;
-  if (!rows.length && !cal.error) html += `<span class="small muted">今天起没有 4 星及以上的数据。</span>`;
-  if (rows.length) {
-    html += `<table><thead><tr><th>时间</th><th>国家/货币</th><th>事件</th><th>前值</th><th>预期</th><th>公布</th><th>星级</th></tr></thead><tbody>`
-      + rows.map((r) => `<tr><td class="num">${esc(r.time)}</td><td>${esc(r.country)}</td><td>${esc(r.title)}${r.unit ? " (" + esc(r.unit) + ")" : ""}</td><td class="num">${esc(r.previous)}</td><td class="num">${esc(r.forecast)}</td><td class="num">${esc(r.actual)}</td><td class="stars">${"★".repeat(r.star || 0)}</td></tr>`).join("")
-      + `</tbody></table>`;
-  }
-  if (box.innerHTML !== html) box.innerHTML = html;
 }
 const heardAlerts = new Set();
 let beepReady = false;
@@ -225,7 +220,6 @@ function render() {
   });
   renderQuote(st.quote);
   renderAlerts(st.alerts || []);
-  renderCalendar(st.calendar);
   beepNew(st.alerts || []);
   // datalists
   once("lists", [st.symbols, st.library, accs.map((a) => a.positions.map((p) => p.symbol))], () => {
@@ -239,7 +233,7 @@ function render() {
     $("#groupList").innerHTML = gs.map((g) => `<option value="${esc(g)}">`).join("");
   });
   if (ui.prog) renderProgress();
-  if (ui.tab === "settings") renderSettingsInfo();
+  if (ui.tab === "settings") { renderSettingsInfo(); renderRemote(st.remote); }
   if (ui.tab === "accounts") renderAccounts();
   if (ui.tab === "trade") { if (window.Quick) Quick.onState(st); renderTrade(); }
   if (ui.tab === "strategy") renderStrategy();
@@ -754,7 +748,7 @@ async function loadLogs() {
 // ---------------- 设置页 ----------------
 function fillSettings() {
   const s = ui.state?.settings; if (!s) return;
-  $("#setAlert").value = s.alert_loss ?? 3000; $("#setMaxLots").value = s.max_lots; $("#setMaxTotal").value = s.max_total_lots;
+  $("#setRemote").value = s.remote_enabled ? "1" : "0"; $("#setRemotePw").value = ""; $("#setAlert").value = s.alert_loss ?? 3000; $("#setMaxLots").value = s.max_lots; $("#setMaxTotal").value = s.max_total_lots;
   $("#setDev").value = s.deviation; $("#setPoll").value = s.poll_interval; $("#setGroups").value = (s.scale_groups || []).join(",");
   $("#setCloseTerm").value = s.close_terminal_on_disconnect ? "1" : "0"; $("#setIni").value = s.ini_encoding || "utf-16";
   $("#setCloseExit").value = s.close_terminals_on_exit ? "1" : "0"; $("#setAlgo").value = s.auto_enable_algo === false ? "0" : "1"; $("#rootPath").textContent = ui.state.terminalsRoot;
@@ -773,7 +767,7 @@ function fillSettings() {
 }
 async function saveSettings(extra) {
   const body = extra || {
-    alert_loss: $("#setAlert").value, max_lots: $("#setMaxLots").value, max_total_lots: $("#setMaxTotal").value, deviation: $("#setDev").value,
+    remote_enabled: $("#setRemote").value === "1", remote_password: $("#setRemotePw").value, alert_loss: $("#setAlert").value, max_lots: $("#setMaxLots").value, max_total_lots: $("#setMaxTotal").value, deviation: $("#setDev").value,
     poll_interval: $("#setPoll").value, scale_groups: $("#setGroups").value,
     close_terminal_on_disconnect: $("#setCloseTerm").value === "1", close_terminals_on_exit: $("#setCloseExit").value === "1", auto_enable_algo: $("#setAlgo").value === "1", ini_encoding: $("#setIni").value,
     template_dir: $("#setTpl").value.trim(), allow_dll_import: $("#setDll").value === "1",
