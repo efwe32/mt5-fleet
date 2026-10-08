@@ -64,6 +64,23 @@ def main():
         got = [p.name for p in T.find_templates(app, app / "terminals")]
         assert got == ["MT5模板", "Zeta", "MetaTrader 5    4"], got
         assert T.exe_version(app / "Zeta" / "terminal64.exe") == ""
+
+    # 随程序发布的列表：191 个服务器，明文里没有账号、密码
+    root = Path(__file__).resolve().parent.parent
+    raw = T.bundled_servers_bytes(root)
+    assert T.servers_dat_count_bytes(raw) == 191, T.servers_dat_count_bytes(raw)
+    for bad in (b"165404037", b"165468707", b"165404029", b"277986117", b"password", b"Password", "密码".encode()):
+        assert bad not in raw, bad
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        ok, msg, meta = T.import_servers_bytes(raw, td / "lib", "随程序发布的服务器列表")
+        assert ok and meta["count"] == 191 and "191 个服务器" in msg, msg
+        # 发布的列表不覆盖更全的终端
+        term = td / "t" / "9"
+        fake_dat(term / "Config" / "servers.dat", 300)
+        (term / "terminal64.exe").write_bytes(b"x")
+        assert T.apply_servers_dat(str(term / "terminal64.exe"), td / "lib" / "servers.dat") == ""
+        assert T.servers_dat_count(term / "Config" / "servers.dat") == 300
     print("test_servers OK")
 
 

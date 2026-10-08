@@ -7,6 +7,7 @@ import json
 import os
 import multiprocessing as mp
 import queue
+import shutil
 import threading
 import time
 import uuid
@@ -102,6 +103,11 @@ class Fleet:
         self.reattach_ids = self.running_terminal_accounts() if not mock else []
         if self.reattach_ids and store.settings.get("auto_reattach", True):
             threading.Thread(target=self._reattach, daemon=True).start()
+        if not mock:
+            try:   # 随版本发布的服务器列表（含 42 及以上）作为底线；不覆盖更全的，不动正在用的账户
+                self.seed_published_servers()
+            except Exception as e:
+                print(f"[提示] 放入发布的服务器列表时出错：{e}")
 
     # ---------------- 程序重启后：接管上次本程序启动、仍在运行的终端 ----------------
     def running_terminal_accounts(self) -> list[str]:
@@ -597,14 +603,72 @@ class Fleet:
                     out.append(a["id"])
         return out
 
+    def _published_servers(self) -> bytes:
+        got = getattr(self, "_pub_cache", None)
+        if got is None:
+            got = b"" if self.mock else T.bundled_servers_bytes(app_root())
+            self._pub_cache = got
+        return got
+
+    def seed_published_servers(self) -> dict:
+        """启动时把随程序发布的服务器列表放进来（只在它比现有的更全时），并放进模板和登录失败的终端。"""
+        data = self._published_servers()
+        n = T.servers_dat_count_bytes(data) if data else -1
+        if n > self.servers_lib_count():
+            ok, msg, meta = T.import_servers_bytes(data, self.store.data_dir / "servers", "随程序发布的服务器列表")
+            if ok:
+                self.store.settings["servers_import"] = meta
+                self.store.save_settings()
+                print(f"[提示] {msg}（发布的列表，含 42 及以上的服务器）")
+        return self._push_servers_lib(log=False)
+
+    def _push_servers_lib(self, log: bool = True) -> dict:
+        """把 data\\servers\\servers.dat 放进模板（比模板更全时）和登录失败 / 没登录成功的终端。正在用的账户不动。"""
+        lib = self.store.data_dir / "servers" / "servers.dat"
+        cur = self.servers_lib_count()
+        tpl_note = ""
+        tpl = "" if self.mock else (self.template_info().get("path") or "")
+        if tpl and cur > 0 and not T.is_running(os.path.join(tpl, "terminal64.exe")):
+            dst = Path(tpl) / "Config" / "servers.dat"
+            have = T.servers_dat_count(dst) if dst.is_file() else -1
+            if cur > have:
+                try:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    if dst.exists():
+                        shutil.copy2(dst, dst.with_suffix(".dat.bak"))
+                    dst.write_bytes(lib.read_bytes())
+                    tpl_note = f"模板已更新为 {cur} 个服务器"
+                except OSError as e:
+                    tpl_note = f"模板未更新：{e}"
+        failing = self.failing_ids()
+        applied, busy = 0, 0
+        for i in failing:
+            a = self.store.get(i)
+            pth = (a or {}).get("terminal_path") or ""
+            if not pth or not os.path.isfile(pth) or self._alive(i):
+                continue
+            if not self.mock and T.is_running(pth):
+                busy += 1
+                continue
+            try:
+                if T.apply_servers_dat(pth, lib):
+                    applied += 1
+            except Exception:
+                pass
+        return {"count": cur, "template": tpl_note, "failing": failing, "applied": applied, "busy": busy}
+
     def fix_servers(self) -> dict:
-        """一键修复服务器列表：在本机（模板 + 已有的 MT5）找服务器条目最多的 servers.dat，只读复制到本程序；
-        再放进登录失败 / 没登录成功过的账户终端（没在运行的）。正常在用的账户不动。"""
+        """一键修复服务器列表：先用随程序发布的列表（含 42 及以上）打底，再和本机 MT5 里更全的比较，取最多的；
+        放进模板和登录失败 / 没登录成功的账户终端。正常在用的账户不动。"""
         if self.mock:
             return {"ok": False, "message": "模拟模式不需要服务器列表"}
         lib = self.store.data_dir / "servers" / "servers.dat"
         cur = self.servers_lib_count()
         cands = []
+        pub = self._published_servers()
+        pn = T.servers_dat_count_bytes(pub) if pub else -1
+        if pn > 0:
+            cands.append({"bytes": pub, "count": pn, "mtime": 0, "owner": "随程序发布的服务器列表"})
         tpl = self.template_info(force=True).get("path")
         if tpl and not T.is_under(os.path.join(tpl, "x"), self.root):
             cands += [dict(r, owner=tpl) for r in T.servers_dat_candidates(tpl)]
@@ -614,38 +678,30 @@ class Fleet:
                     cands.append(dict(it["servers"], owner=it.get("origin") or it["path"]))
         except Exception:
             pass
-        cands = [c for c in cands if c.get("count", -1) > 0 and not T.is_under(c["path"], self.root)]
+        cands = [c for c in cands if c.get("count", -1) > 0 and ("bytes" in c or not T.is_under(c.get("path", ""), self.root))]
         if not cands and cur <= 0:
-            return {"ok": False, "message": "没有在这台电脑上找到带服务器列表的 MT5。请先在任意一个 MT5 里登录 / 搜索一次你的券商，"
-                                            "或在下面「从已有 MT5 导入服务器列表」手动选择"}
-        best = max(cands, key=lambda c: (c["count"], c["mtime"])) if cands else None
+            return {"ok": False, "message": "没有找到服务器列表。请先把程序更新到 1.3.2 及以上，或在下面手动选择一份 MT5 导入"}
+        best = max(cands, key=lambda c: (c["count"], c.get("mtime") or 0)) if cands else None
         parts = []
         if best and best["count"] > cur:
-            ok, msg, meta = T.import_servers_dat(best["path"], lib.parent)
+            if "bytes" in best:
+                ok, msg, meta = T.import_servers_bytes(best["bytes"], lib.parent, best["owner"])
+            else:
+                ok, msg, meta = T.import_servers_dat(best["path"], lib.parent)
             if not ok:
                 self.log("", "修复服务器列表", False, msg, "本机")
                 return {"ok": False, "message": msg}
             self.store.settings["servers_import"] = meta
             self.store.save_settings()
-            parts.append(f"已从 {best['owner']} 导入 {best['count']} 个服务器（只读复制，原来的 MT5 没有改动）")
+            parts.append(f"已采用{best['owner']}的 {best['count']} 个服务器" + ("" if "bytes" in best else "（只读复制，原来的 MT5 没有改动）"))
             cur = best["count"]
         else:
-            parts.append(f"本程序的服务器列表已经是这台电脑上最全的（{cur} 个服务器）")
-        failing = self.failing_ids()
-        applied, busy = 0, 0
-        for i in failing:
-            a = self.store.get(i)
-            p = (a or {}).get("terminal_path") or ""
-            if not p or not os.path.isfile(p) or self._alive(i):
-                continue
-            if T.is_running(p):
-                busy += 1
-                continue
-            try:
-                if T.apply_servers_dat(p, lib):
-                    applied += 1
-            except Exception:
-                pass
+            base = f"，其中随程序发布的有 {pn} 个" if pn > 0 else ""
+            parts.append(f"服务器列表已经是最全的（{cur} 个{base}）")
+        pushed = self._push_servers_lib(log=False)
+        if pushed.get("template"):
+            parts.append(pushed["template"])
+        failing, applied, busy = pushed["failing"], pushed["applied"], pushed["busy"]
         if failing:
             parts.append(f"{len(failing)} 个登录失败 / 还没登录成功的账户：已更新 {applied} 个终端的服务器列表"
                          + (f"，{busy} 个终端正在运行（下次由本程序启动时更新）" if busy else ""))
@@ -654,7 +710,7 @@ class Fleet:
         parts.append("正常在用的账户没有改动；以后新建的终端会自动带上")
         msg = "；".join(parts)
         self.log("", "修复服务器列表", True, msg, "本机")
-        return {"ok": True, "message": msg, "count": cur, "retry": failing}
+        return {"ok": True, "message": msg, "count": cur, "retry": failing, "published": pn}
 
     # ---------------- 登录 ----------------
     def _login_ids(self, ids: list[str], finish: bool = True) -> dict:
@@ -1364,7 +1420,8 @@ class Fleet:
                 "library": self.library(), "firstLaunch": self.store.first_launch,
                 "terminalsRoot": str(self.root), "dataDir": str(self.store.data_dir), "now": int(time.time() * 1000),
                 "progress": self.prog, "servers": self.server_names(), "template": self.template_info(),
-                "serversImport": self.store.settings.get("servers_import"), "serversLib": self.servers_lib_count()}
+                "serversImport": self.store.settings.get("servers_import"), "serversLib": self.servers_lib_count(),
+                "serversPublished": T.servers_dat_count_bytes(self._published_servers())}
 
     def library(self):
         lib = self.store.data_dir / "ea_library"

@@ -87,6 +87,21 @@ def build(out: Path) -> dict:
         "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
         "requirements": _req_norm(req), "files": hashes,
     }
+    bundled = ROOT / "tools" / "servers" / "mt5-servers.b64"
+    if bundled.is_file():
+        import base64
+        from fleet.terminal import servers_dat_count_bytes
+        raw = base64.b64decode("".join(bundled.read_text(encoding="ascii").split()))
+        cnt = servers_dat_count_bytes(raw)
+        if cnt < 0:
+            raise SystemExit("[错误] tools/servers/mt5-servers.b64 不是有效的 servers.dat")
+        for bad in (b"password", b"Password", "密码".encode()):
+            if bad in raw:
+                raise SystemExit(f"[错误] 服务器列表里出现了不该有的内容：{bad!r}")
+        (out / "mt5-servers.dat").write_bytes(raw)
+        manifest["servers"] = {"asset": "mt5-servers.dat", "sha256": hashlib.sha256(raw).hexdigest(),
+                               "size": len(raw), "count": cnt,
+                               "note": "只有券商服务器列表（加密保存），没有账号、密码、历史"}
     txt = json.dumps(manifest, ensure_ascii=False, indent=1)
     (out / MANIFEST_ASSET).write_text(txt, encoding="utf-8")
     (out / "latest.json").write_text(txt, encoding="utf-8")

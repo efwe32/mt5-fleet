@@ -15,6 +15,7 @@ MQL5\\Profiles\\Charts\\*\\*.chr 里删掉对应 <expert> 段落，然后重新�
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import re
@@ -509,6 +510,14 @@ def appdata_data_dirs() -> list[tuple[Path, str]]:
     return out
 
 
+def servers_dat_count_bytes(h: bytes) -> int:
+    """servers.dat 文件头里的服务器条目数（-1 = 不是 servers.dat）。"""
+    if len(h) < 0xB0 or h[4:8] != "Co".encode("utf-16-le") or "Servers".encode("utf-16-le") not in h[0x80:0xA4]:
+        return -1
+    n = int.from_bytes(h[0xAC:0xB0], "little")
+    return n if 0 <= n < 100000 else -1
+
+
 def servers_dat_count(path) -> int:
     """servers.dat 里的服务器条目数（只读文件头；-1 = 不是 servers.dat 或读不出来）。"""
     try:
@@ -516,10 +525,24 @@ def servers_dat_count(path) -> int:
             h = f.read(0xB0)
     except OSError:
         return -1
-    if len(h) < 0xB0 or h[4:8] != "Co".encode("utf-16-le") or "Servers".encode("utf-16-le") not in h[0x80:0xA4]:
-        return -1
-    n = int.from_bytes(h[0xAC:0xB0], "little")
-    return n if 0 <= n < 100000 else -1
+    return servers_dat_count_bytes(h)
+
+
+BUNDLED_SERVERS = ("tools", "servers", "mt5-servers.b64")   # 随程序发布的服务器列表（base64，只有服务器，没有账户）
+
+
+def bundled_servers_bytes(app_dir) -> bytes:
+    """随程序发布的 servers.dat（解码后）。没有或坏了返回空。"""
+    p = Path(app_dir).joinpath(*BUNDLED_SERVERS)
+    try:
+        text = p.read_text(encoding="ascii")
+    except OSError:
+        return b""
+    try:
+        data = base64.b64decode("".join(text.split()))
+    except Exception:
+        return b""
+    return data if servers_dat_count_bytes(data) >= 0 else b""
 
 
 def servers_dat_candidates(folder: str) -> list[dict]:
@@ -604,27 +627,37 @@ def scan_mt5_installs(extra_roots: list[str] | None = None, budget: float = 4.0,
     return sorted(seen.values(), key=lambda x: (x["servers"] is None, -((x["servers"] or {}).get("count") or 0), x["path"].lower()))
 
 
-def import_servers_dat(src_file: str, lib_dir: Path) -> tuple[bool, str, dict]:
-    """把别的 MT5 的 servers.dat 只读复制到本程序的数据目录（lib_dir\\servers.dat）。"""
-    src = Path(src_file)
-    if src.name.lower() != "servers.dat" or not src.is_file():
-        return False, f"不是有效的 servers.dat：{src}", {}
-    size = src.stat().st_size
+def import_servers_bytes(data: bytes, lib_dir: Path, source: str = "") -> tuple[bool, str, dict]:
+    """把一份 servers.dat 的内容放进本程序的数据目录（lib_dir\\servers.dat）。"""
+    size = len(data)
     if size < 64 or size > 20 * 1024 * 1024:
         return False, f"servers.dat 大小异常（{size} 字节）", {}
+    if servers_dat_count_bytes(data) < 0:
+        return False, "不是有效的 servers.dat", {}
     lib_dir.mkdir(parents=True, exist_ok=True)
     dst = lib_dir / "servers.dat"
     if dst.exists():
         shutil.copy2(dst, lib_dir / "servers.dat.prev")
-    with open(src, "rb") as f:   # 只读打开源文件
-        data = f.read()
     tmp = dst.with_suffix(".tmp")
     tmp.write_bytes(data)
     os.replace(tmp, dst)
     digest = hashlib.sha1(data).hexdigest()[:16]
     cnt = servers_dat_count(dst)
     what = f"{cnt} 个服务器" if cnt >= 0 else f"{size} 字节"
-    return True, f"已导入服务器列表（{what}）", {"source": str(src), "size": size, "hash": digest, "at": int(time.time()), "count": cnt}
+    return True, f"已导入服务器列表（{what}）", {"source": source or "servers.dat", "size": size, "hash": digest, "at": int(time.time()), "count": cnt}
+
+
+def import_servers_dat(src_file: str, lib_dir: Path) -> tuple[bool, str, dict]:
+    """把别的 MT5 的 servers.dat 只读复制到本程序的数据目录（lib_dir\\servers.dat）。"""
+    src = Path(src_file)
+    if src.name.lower() != "servers.dat" or not src.is_file():
+        return False, f"不是有效的 servers.dat：{src}", {}
+    try:
+        with open(src, "rb") as f:   # 只读打开源文件
+            data = f.read()
+    except OSError as e:
+        return False, f"读取失败：{e}", {}
+    return import_servers_bytes(data, lib_dir, str(src))
 
 
 def apply_servers_dat(terminal_path: str, lib_file: Path) -> str:
