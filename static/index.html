@@ -111,6 +111,25 @@
           <div class="qp-side" id="qSide"></div>
         </div>
 
+        <!-- 算法交易开关：在自选账户的 MT5 里一键打开 / 关闭「算法交易」按钮 -->
+        <div class="panel al-panel" id="algoPanel">
+          <div class="al-head">
+            <h2>算法交易开关</h2>
+            <div class="pd-pick" id="alPickWrap">
+              <button type="button" class="pd-pickbtn" id="alPick" aria-haspopup="true" aria-expanded="false">选择账户 ▾</button>
+              <div class="pd-pop hidden" id="alPop" role="dialog" aria-label="选择算法交易开关的账户"></div>
+            </div>
+          </div>
+          <p class="small muted" style="margin:6px 0 10px">等于在每个所选账户的 MT5 里点一下工具栏的「算法交易」按钮。关闭后 EA 停止下单，持仓保留。下面的「开 / 关」是终端自己报告的实时状态。只操作本程序启动的终端，桌面上的 MT5 不碰。</p>
+          <div class="al-btns">
+            <button type="button" class="btn up" id="alOn">一键开启</button>
+            <button type="button" class="btn danger" id="alOff">一键关闭</button>
+            <span class="small muted" id="alSum"></span>
+          </div>
+          <div id="alRes"></div>
+          <div id="alList"></div>
+        </div>
+
         <details class="adv" id="tradeAdv">
         <summary>高级批量操作（按账号页勾选的账户：挂单、止损止盈、按魔术号平仓、持仓明细）</summary>
         <div id="tradeEmpty"></div>
@@ -405,6 +424,7 @@
 <div id="modal"></div>
 <script src="/static/desk.js"></script>
 <script src="/static/quick.js"></script>
+<script src="/static/algo.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

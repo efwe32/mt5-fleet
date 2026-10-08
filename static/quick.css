@@ -77,3 +77,17 @@ details.adv[open]>summary{border-bottom:1px solid var(--line)}
 details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
 @media (max-width:1100px){.qp-wrap{grid-template-columns:1fr}.qp{max-width:560px}}
 @media (max-width:560px){.qp{padding:12px 10px}.qb{font-size:17px;min-height:52px}.qp .pd-pop{width:calc(100vw - 32px)}.qp-head{flex-wrap:wrap}.qp .pd-pick{width:100%}.qp .pd-pickbtn{width:100%;max-width:none;text-align:left}.qp .pd-pop{left:0;right:auto}}
+/* 算法交易开关 */
+.al-panel{margin-bottom:16px;max-width:1100px}
+.al-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.al-btns{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.al-btns .btn{min-width:120px;min-height:40px}
+.al-rh{margin:6px 0 4px}.al-x{border:0;background:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 6px}
+.al-rl{display:flex;flex-direction:column;gap:3px;font-size:13px;margin-bottom:10px;max-height:220px;overflow:auto}
+.al-tw{overflow-x:auto}
+.al-t{width:100%;border-collapse:collapse;font-size:13px}
+.al-t th,.al-t td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.al-t td.small{white-space:normal;min-width:160px}
+.al-t th{color:var(--muted);font-weight:500}
+@media (max-width:560px){.al-head .pd-pick{width:100%}.al-head .pd-pickbtn{width:100%;max-width:none;text-align:left}.al-head .pd-pop{width:100%}
+  .al-btns .btn{flex:1;min-height:48px;font-size:16px}.al-btns #alSum{width:100%}.al-t{font-size:12px}.al-t th,.al-t td{padding:6px 5px}}

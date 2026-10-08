@@ -158,6 +158,7 @@ function renderNav() {
   document.body.classList.toggle("desk-mode", ui.tab === "stats");
   if (window.Desk) { if (ui.tab === "stats") { Desk.start(); if (ui.state) Desk.onState(ui.state); } else Desk.stop(); }
   if (window.Quick) { if (ui.tab === "trade") { if (ui.state) Quick.onState(ui.state); Quick.start(); } else Quick.stop(); }
+  if (window.Algo && ui.tab === "trade" && ui.state) Algo.onState(ui.state);
 }
 function go(tab) {
   ui.tab = tab; localStorage.setItem("fleet.tab", tab); ui.lastRender = {}; renderNav(); render();
@@ -235,7 +236,7 @@ function render() {
   if (ui.prog) renderProgress();
   if (ui.tab === "settings") { renderSettingsInfo(); renderRemote(st.remote); }
   if (ui.tab === "accounts") renderAccounts();
-  if (ui.tab === "trade") { if (window.Quick) Quick.onState(st); renderTrade(); }
+  if (ui.tab === "trade") { if (window.Quick) Quick.onState(st); if (window.Algo) Algo.onState(st); renderTrade(); }
   if (ui.tab === "strategy") renderStrategy();
   if (ui.tab === "stats") { renderStats(); if (window.Desk) Desk.onState(st); }
   applyLive();
