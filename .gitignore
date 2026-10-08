@@ -1,0 +1,29 @@
+# 运行数据（账户、密码、设置、日志、EA、收益记录）——绝不提交
+data/
+data_mock/
+*.lock
+launched.json
+accounts.json
+settings.json
+# 受管终端、MT5 模板、运行环境
+terminals/*
+!terminals/说明.txt
+MetaTrader*/
+MT5模板/
+python/
+.venv/
+venv/
+# 打包输出
+build/
+dist/
+新建文件夹/
+*.zip
+*.exe
+*.ex5
+*.ex4
+*.mq5
+*.set
+*.dat
+*.log
+__pycache__/
+*.pyc
