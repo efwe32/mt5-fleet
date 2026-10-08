@@ -24,6 +24,7 @@ ORDER_FILLING_FOK, ORDER_FILLING_IOC, ORDER_FILLING_RETURN = 0, 1, 2
 DEAL_TYPE_BUY, DEAL_TYPE_SELL, DEAL_TYPE_BALANCE = 0, 1, 2
 DEAL_ENTRY_IN, DEAL_ENTRY_OUT, DEAL_ENTRY_INOUT, DEAL_ENTRY_OUT_BY = 0, 1, 2, 3
 TRADE_RETCODE_DONE, TRADE_RETCODE_PLACED = 10009, 10008
+TIMEFRAME_H1 = 16385
 
 AccountInfo = namedtuple("AccountInfo", "login trade_mode leverage limit_orders margin_so_mode trade_allowed trade_expert "
                          "margin_mode currency_digits fifo_close balance credit profit equity margin margin_free "
@@ -83,6 +84,7 @@ class MockMT5:
         self._rng = random.Random()
         # 测试模式下的“自动 EA”：随机开/平小单，让收益台有真实的数据流（测试时可用环境变量关闭）
         self._auto = os.environ.get("FLEET_MOCK_AUTOTRADE", "1") != "0"
+        self._force_profit = None  # 测试：固定浮亏，用来触发警报
 
     # 让实例看起来像模块：常量
     def __getattr__(self, name):
@@ -240,12 +242,30 @@ class MockMT5:
             m += p["volume"] * spec["contract"] * px / spec["leverage"]
         return round(m, 2)
 
+    def copy_rates_from_pos(self, symbol, timeframe, start_pos, count):
+        b = self._base(symbol)
+        if not b:
+            return None
+        px = self._prices[b]
+        now = int(time.time())
+        out = []
+        n = int(count)
+        for i in range(n):
+            age = (n - 1 - i) + int(start_pos)
+            close = px if i == n - 1 else round(px * 0.998, 5)
+            out.append({"time": now - age * 3600, "open": close, "high": close, "low": close,
+                        "close": close, "tick_volume": 10})
+        return out
+
     def account_info(self):
         if not self._connected:
             self._err = (-10004, "No IPC connection")
             return None
         self._tick()
-        profit = round(sum(self._profit(p)[0] for p in self._positions.values()), 2)
+        if self._force_profit is not None:
+            profit = round(float(self._force_profit), 2)
+        else:
+            profit = round(sum(self._profit(p)[0] for p in self._positions.values()), 2)
         equity = round(self._balance + profit, 2)
         margin = self._margin()
         level = round(equity / margin * 100, 2) if margin else 0.0

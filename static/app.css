@@ -164,3 +164,13 @@ tr.off{opacity:.6}
 .upd-notes{white-space:pre-wrap;margin:8px 0 0;padding:8px 12px;font-size:12px;line-height:1.65;background:var(--ink);border:1px solid var(--line);border-radius:6px;max-height:260px;overflow:auto}
 .upd-overlay{position:fixed;inset:0;z-index:999;background:rgba(10,11,8,.82);display:flex;align-items:center;justify-content:center;text-align:center;color:var(--fg)}
 .upd-overlay div{max-width:460px;padding:24px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+
+.home-top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.fx{display:flex;align-items:baseline;gap:10px;font-weight:600}
+.fx .px{font-family:var(--mono);font-size:20px}
+.fx .chg{font-family:var(--mono);font-size:13px}
+.fx .src{font-size:12px;color:var(--faint);font-weight:400}
+.alert-board{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.alert-board>b{margin-right:4px}
+.alert-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--down);color:var(--down);background:color-mix(in srgb,var(--down) 12%,transparent);border-radius:999px;padding:2px 4px 2px 10px;font-size:13px}
+.alert-chip button{min-height:28px}

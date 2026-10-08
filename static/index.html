@@ -22,6 +22,11 @@
   </aside>
   <div class="main">
     <header>
+
+      <div class="home-top">
+        <div class="fx" data-slot="fx">USDJPY <span class="num">—</span></div>
+        <div class="alert-board" data-slot="alerts"><b>警报</b><span class="small muted">暂无</span></div>
+      </div>
       <div class="mobile-top">
         <div class="logo">批</div>
         <div class="brand"><div><small>多账户</small><b>MT5 批量终端</b></div></div>
@@ -209,6 +214,11 @@
       <!-- 收益（收益台 · 首页） -->
       <section class="page hidden" data-page="stats">
         <div class="pdesk" id="pdesk">
+          <div class="pd-card pd-topbar">
+            <div class="fx" data-slot="fx">USDJPY <span class="num">—</span></div>
+            <div class="alert-board" data-slot="alerts"><b>警报</b><span class="small muted">暂无</span></div>
+          </div>
+          <div class="pd-card pd-cal" id="calBoard"><div class="pd-ct"><b>金十数据 · 4星及以上</b><span class="pd-rt"><a href="https://rili.jin10.com/" target="_blank" rel="noopener">rili.jin10.com</a></span></div><div class="pd-cal-body small muted">正在读取…</div></div>
           <div class="pd-card pd-head">
             <div class="pd-logo" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M9 29 L17 19 L23 24 L31 11" fill="none" stroke="#10140a" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31" cy="11" r="3.4" fill="#10140a"/></svg></div>
             <div class="pd-title">MT5 批量终端<span class="pd-bar">|</span><span class="pd-sub" id="pdSub">收益台</span></div>
@@ -342,6 +352,7 @@
         <div class="panel">
           <h2>安全</h2>
           <div class="grid3" style="margin-top:12px">
+            <label class="field"><span>浮亏警报金额（单个账户浮亏达到这个数就警报，账户货币）</span><input class="input num" id="setAlert" inputmode="decimal" value="3000"></label>
             <label class="field"><span>单笔最大手数（超过即拦截）</span><input class="input num" id="setMaxLots" inputmode="decimal"></label>
             <label class="field"><span>单次批量合计最大手数</span><input class="input num" id="setMaxTotal" inputmode="decimal"></label>
             <label class="field"><span>市价单滑点（点）</span><input class="input num" id="setDev" inputmode="numeric"></label>
