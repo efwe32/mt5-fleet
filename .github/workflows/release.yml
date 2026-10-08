@@ -1,0 +1,40 @@
+name: release
+# 版本号（fleet/__init__.py）或更新说明变化时：跑测试 → 生成发布文件 → 创建 v<版本> 发布（已存在则跳过）
+on:
+  push:
+    branches: [main]
+    paths: ["fleet/__init__.py", "RELEASE_NOTES.md", ".github/workflows/release.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: 安装测试依赖
+        run: pip install fastapi uvicorn python-multipart psutil httpx
+      - name: 测试（隔离 / 在线更新）
+        run: |
+          mkdir -p /tmp/fake && cc -O2 -o /tmp/fake/terminal64.exe tests/fake_terminal.c
+          python tests/test_isolation.py /tmp/fake/terminal64.exe
+          python tests/test_updater.py /tmp/fake/terminal64.exe 8930
+      - name: 生成发布文件
+        id: build
+        run: |
+          python tools/make_release.py --out dist
+          echo "version=$(python -c 'import fleet; print(fleet.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: 创建发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.build.outputs.version }}
+        run: |
+          if gh release view "v$VER" >/dev/null 2>&1; then
+            echo "v$VER 已经发布过，跳过"
+          else
+            gh release create "v$VER" "dist/mt5-fleet-app-$VER.zip" dist/mt5-fleet-manifest.json dist/latest.json \
+              --title "v$VER" --notes-file dist/notes.md --latest --target "$GITHUB_SHA"
+          fi
