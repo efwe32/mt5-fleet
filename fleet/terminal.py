@@ -153,6 +153,57 @@ def launch_terminal(terminal_path: str, config_ini: Path | None = None) -> tuple
     return proc.pid, ct
 
 
+# ---------------- 算法交易按钮 ----------------
+WM_COMMAND = 0x0111
+ALGO_TRADING_CMD = 32851          # MT5 工具栏「算法交易」按钮的命令号（和点一下按钮一样，开/关来回切换）
+MT5_WINDOW_CLASS = "MetaQuotes::MetaTrader::"
+
+
+def _user32():
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    u.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    u.GetWindowThreadProcessId.restype = wintypes.DWORD
+    u.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    u.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+    u.GetWindow.restype = wintypes.HWND
+    u.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    u.PostMessageW.restype = wintypes.BOOL
+    return u
+
+
+def main_windows(pid: int) -> list[int]:
+    """这个进程（本程序启动的终端）的 MT5 主窗口。只按 PID 找，不会碰到别的 MT5。"""
+    if sys.platform != "win32":
+        return []
+    import ctypes
+    from ctypes import wintypes
+    u = _user32()
+    found: list[int] = []
+    proc_t = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def cb(hwnd, _lp):
+        p = wintypes.DWORD()
+        u.GetWindowThreadProcessId(hwnd, ctypes.byref(p))
+        if p.value == pid and not u.GetWindow(hwnd, 4):        # 4 = GW_OWNER：只要顶层主窗口
+            buf = ctypes.create_unicode_buffer(256)
+            u.GetClassNameW(hwnd, buf, 256)
+            if buf.value.startswith(MT5_WINDOW_CLASS):
+                found.append(int(hwnd))
+        return True
+
+    u.EnumWindows(proc_t(cb), 0)
+    return found
+
+
+def post_algo_toggle(hwnd: int) -> bool:
+    """等于在这个终端里点一下「算法交易」按钮。调用方必须事后读 terminal_info().trade_allowed 确认。"""
+    if sys.platform != "win32":
+        return False
+    return bool(_user32().PostMessageW(hwnd, WM_COMMAND, ALGO_TRADING_CMD, 0))
+
+
 # ---------------- EA 文件 ----------------
 def install_files(terminal_path: str, ex5_src: Path, preset_src: Path | None) -> tuple[Path, Path | None]:
     m = mql5_dir(terminal_path)
@@ -169,13 +220,14 @@ def install_files(terminal_path: str, ex5_src: Path, preset_src: Path | None) ->
     return dst, pdst
 
 
-def _ini_lines(creds: dict | None, startup: dict | None, allow_dll: bool) -> list[str]:
+def _ini_lines(creds: dict | None, startup: dict | None, allow_dll: bool, algo: bool = True) -> list[str]:
     lines: list[str] = []
     if creds:
         # 登录信息只写进这个临时文件，终端启动、登录完成后立刻抹掉删除
         lines += ["[Common]", f"Login={creds['login']}", f"Password={creds['password']}", f"Server={creds['server']}",
                   "KeepPrivate=1", "NewsEnable=0", "CertInstall=0", ""]
-    lines += ["[Experts]", "AllowLiveTrading=1", f"AllowDllImport={1 if allow_dll else 0}", "Enabled=1",
+    # Enabled = 工具栏「算法交易」按钮。用户在交易页手动关掉的账户，后台重新打开终端时保持关闭
+    lines += ["[Experts]", "AllowLiveTrading=1", f"AllowDllImport={1 if allow_dll else 0}", f"Enabled={1 if algo else 0}",
               "Account=0", "Profile=0"]
     if startup:
         stem = Path(startup["fileName"]).stem
@@ -187,11 +239,11 @@ def _ini_lines(creds: dict | None, startup: dict | None, allow_dll: bool) -> lis
 
 
 def write_config_ini(terminal_path: str, creds: dict | None = None, startup: dict | None = None,
-                     allow_dll: bool = False, encoding: str = "utf-16") -> Path:
+                     allow_dll: bool = False, encoding: str = "utf-16", algo: bool = True) -> Path:
     """写一次性的启动配置（/config:xxx.ini）到该终端自己的目录，文件名随机。
     creds={login,password,server} 时包含登录信息，调用方必须在终端启动后用 wipe_file() 删除。"""
     ini = terminal_dir(terminal_path) / f"fleet_{secrets.token_hex(6)}.ini"
-    ini.write_text("\r\n".join(_ini_lines(creds, startup, allow_dll)) + "\r\n", encoding=encoding)
+    ini.write_text("\r\n".join(_ini_lines(creds, startup, allow_dll, algo)) + "\r\n", encoding=encoding)
     return ini
 
 

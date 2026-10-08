@@ -366,6 +366,14 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
     def quick_ids(text: str) -> list[str]:
         return [x.strip() for x in text.split(",") if x.strip()][:200]
 
+    @app.post("/api/algo")
+    def algo_switch(body: dict):
+        """交易页「一键开启 / 一键关闭算法交易」：只作用于所选、本程序启动的终端，结果按终端回读的状态报告。"""
+        on = body.get("on")
+        if not isinstance(on, bool):
+            raise HTTPException(400, "请说明是开启还是关闭")
+        return run_exclusive(fleet.set_algo, ids_of(body), on)
+
     @app.get("/api/quick/summary")
     def quick_summary(symbol: str = "", accounts: str = ""):
         """快捷面板实时数据：所选账户在这个品种上的报价、多空层数/手数/均价、今日/历史平仓盈亏、回撤、自动全平状态（只读）。"""

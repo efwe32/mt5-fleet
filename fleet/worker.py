@@ -68,6 +68,8 @@ class Worker:
         # 快捷交易面板关注的品种（标准名）→ 每轮轮询附带报价；解析结果缓存
         self.watch: list[str] = [str(x) for x in (settings.get("_watch") or [])][:4]
         self._sym_cache: dict[str, tuple] = {}
+        # 这次登录是用户点的（登录 / 分发）：算法交易没开就帮他打开。后台重连、接管不算
+        self._explicit = bool(acc.pop("_explicit", False))
 
     # ---------------- 工具 ----------------
     def c(self, name):
@@ -181,7 +183,13 @@ class Worker:
         self.status(snap)
         acc = snap.get("account") or {}
         self.progress("login", "ok", f"登录成功 · {acc.get('company', '')} · {acc.get('server', '')}")
-        algo_ok, algo_msg = self.check_algo(snap)
+        snap, pref_note = self.apply_algo_pref(snap)
+        if self.acc.get("algo_off") and not (snap.get("terminal") or {}).get("trade_allowed"):
+            algo_ok, algo_msg = True, "算法交易按你在交易页的设置保持关闭（交易页可一键开启）"
+        else:
+            algo_ok, algo_msg = self.check_algo(snap)
+        if pref_note:
+            algo_msg = pref_note if algo_ok else f"{pref_note}；{algo_msg}"
         sym_note = self.select_default_symbol()
         self.progress("algo", "ok" if algo_ok else "warn", algo_msg + (f"；{sym_note}" if sym_note else ""))
         warn = "" if algo_ok else f"（注意：{algo_msg}）"
@@ -239,6 +247,84 @@ class Worker:
             return int(self.mt5.last_error()[0])
         except Exception:
             return 0
+
+    # ---------------- 算法交易按钮 ----------------
+    def _algo_now(self):
+        try:
+            ti = self.mt5.terminal_info()
+        except Exception:
+            ti = None
+        return None if ti is None else bool(ti.trade_allowed)
+
+    def set_algo(self, on: bool) -> tuple[bool, str, dict]:
+        """在本程序启动的终端里点一下「算法交易」按钮，然后读 terminal_info().trade_allowed 确认真的变了。"""
+        want = "开启" if on else "关闭"
+        cur = self._algo_now()
+        if cur is None:
+            return False, "读取不到终端状态：" + self.err(), {}
+        if cur == on:
+            return True, f"算法交易本来就是{'开' if on else '关'}", {"trade_allowed": cur, "changed": False}
+        hwnd = 0
+        if not self.mock:
+            from . import terminal as T
+            proc = T.proc_matches(self.own)
+            if not self.own or proc is None:
+                return False, "这个终端不是本程序启动的，不会去点它的按钮（请在那个终端窗口里手动点「算法交易」）", \
+                    {"trade_allowed": cur}
+            wins = T.main_windows(proc.pid)
+            if not wins:
+                return False, "找不到这个终端的主窗口（可能还在启动），请稍后再试", {"trade_allowed": cur}
+            hwnd = wins[0]
+        for attempt in (1, 2):
+            if self.mock:
+                if not getattr(self.mt5, "_algo_stuck", False):
+                    self.mt5._algo = on
+            else:
+                from . import terminal as T
+                if not T.post_algo_toggle(hwnd):
+                    return False, "向终端发送切换命令失败", {"trade_allowed": cur}
+            deadline = time.time() + (0.5 if self.mock else 5)
+            while time.time() < deadline:
+                time.sleep(0.05 if self.mock else 0.25)
+                now = self._algo_now()
+                if now == on:
+                    tail = "" if on else "：EA 不再下单，持仓保留"
+                    return True, f"算法交易已{want}{tail}" + ("（第二次才生效）" if attempt == 2 else ""), \
+                        {"trade_allowed": on, "changed": True}
+            if self._algo_now() == on:
+                break
+        now = self._algo_now()
+        return False, f"已发送{want}命令，但终端状态没有变化（现在仍是{'开' if now else '关'}）。请在该终端窗口里手动点「算法交易」按钮", \
+            {"trade_allowed": bool(now)}
+
+    def apply_algo_pref(self, snap: dict) -> tuple[dict, str]:
+        """登录 / 重连后：用户在交易页关掉的账户保持关闭；用户点的登录或分发，没开就打开。"""
+        explicit, self._explicit = self._explicit, False
+        on_now = bool((snap.get("terminal") or {}).get("trade_allowed"))
+        note = ""
+        if self.acc.get("algo_off") and on_now:
+            ok, msg, _ = self.set_algo(False)
+            note = "按你的设置保持关闭算法交易：" + msg
+            self.emit(type="log", action="算法交易", ok=ok, message=note)
+        elif explicit and not on_now and not self.acc.get("algo_off") and self.settings.get("auto_enable_algo", True):
+            ok, msg, _ = self.set_algo(True)
+            note = ("已自动打开算法交易" if ok else "自动打开算法交易失败：" + msg)
+            self.emit(type="log", action="算法交易", ok=ok, message=note)
+        else:
+            return snap, ""
+        try:
+            snap = self.snapshot()
+            self.status(snap)
+        except Exception:
+            pass
+        return snap, note
+
+    def cmd_algo(self, p: dict):
+        on = bool(p.get("on"))
+        ok, msg, detail = self.set_algo(on)
+        if ok:
+            self.acc["algo_off"] = not on
+        return ok, msg, detail
 
     @staticmethod
     def check_algo(snap: dict) -> tuple[bool, str]:
@@ -326,7 +412,7 @@ class Worker:
         ini = None
         if creds or startup or self.settings.get("auto_enable_algo", True):
             try:
-                ini = T.write_config_ini(path, creds, startup, dll, enc)
+                ini = T.write_config_ini(path, creds, startup, dll, enc, algo=not self.acc.get("algo_off"))
             except Exception as e:
                 return self._fail_step("launch", f"写启动配置失败：{e}")
         self._ini = ini
@@ -959,6 +1045,7 @@ class Worker:
             prof = None
             perr = str(e)
         marks = T.log_marks(path)
+        self._explicit = True       # 分发是用户点的：重新登录后算法交易没开就打开
         if prof is None:
             # 写图表文件失败：退回 MT5 启动配置挂载（这种方式终端重启后 EA 不会自动恢复）
             ok, msg = self._relaunch({"fileName": fname, "symbol": symbol, "timeframe": tf, "preset": use_preset})
@@ -981,6 +1068,7 @@ class Worker:
                 except Exception:
                     pass
                 marks = T.log_marks(path)
+                self._explicit = True
                 ok, msg = self._relaunch({"fileName": fname, "symbol": symbol, "timeframe": tf, "preset": use_preset})
                 if not ok:
                     return self._step_fail("verify", msg)
@@ -1076,7 +1164,20 @@ class Worker:
                 self.password = cmd["password"]
             return
         if name == "connect":
-            ok, msg = self.connect() if self.link != "online" else (True, "已在线")
+            if params.get("explicit"):
+                self._explicit = True
+            if self.link != "online":
+                ok, msg = self.connect()
+            else:
+                ok, msg = True, "已在线"
+                if self._explicit:
+                    try:
+                        _, note = self.apply_algo_pref(self.snapshot())
+                    except Exception as e:
+                        note = f"读取终端状态失败：{e}"
+                    if note:
+                        msg += "，" + note
+            self._explicit = False
             self.emit(type="result", req=req, ok=ok, message=msg)
             return
         if name == "disconnect":
@@ -1107,7 +1208,7 @@ class Worker:
         handlers = {"order": self.cmd_order, "close": self.cmd_close, "modify": self.cmd_modify,
                     "cancel_orders": self.cmd_cancel_orders, "history": self.cmd_history,
                     "deploy": self.cmd_deploy, "stop_ea": self.cmd_stop_ea,
-                    "order_pair": self.cmd_order_pair, "nuke": self.cmd_nuke}
+                    "order_pair": self.cmd_order_pair, "nuke": self.cmd_nuke, "algo": self.cmd_algo}
         fn = handlers.get(name)
         if fn is None:
             self.emit(type="result", req=req, ok=False, message=f"未知命令 {name}")
@@ -1123,7 +1224,7 @@ class Worker:
         except Exception as e:
             ok, msg, detail = False, f"执行出错：{e}", {"trace": traceback.format_exc()[-800:]}
         self.emit(type="result", req=req, ok=ok, message=msg, detail=detail)
-        if name in ("order", "close", "modify", "cancel_orders", "order_pair", "nuke"):
+        if name in ("order", "close", "modify", "cancel_orders", "order_pair", "nuke", "algo"):
             self.poll()
 
     def run(self, init_req=None):

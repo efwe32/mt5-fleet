@@ -442,9 +442,10 @@ class Fleet:
             self.pending.pop(req, None)
         return out
 
-    def _spawn(self, a: dict, req: str):
+    def _spawn(self, a: dict, req: str, explicit: bool = False):
         cmd_q = CTX.Queue()
         acc = {k: v for k, v in a.items() if k not in ("password", "last")}
+        acc["_explicit"] = bool(explicit)
         acc["_worked"] = bool(a.get("last"))      # 原先登录成功过：不替换它终端里的服务器列表
         try:
             pw = self.store.password_of(a)
@@ -728,7 +729,7 @@ class Fleet:
         return {"ok": True, "message": msg, "count": cur, "retry": failing, "published": pn}
 
     # ---------------- 登录 ----------------
-    def _login_ids(self, ids: list[str], finish: bool = True) -> dict:
+    def _login_ids(self, ids: list[str], finish: bool = True, explicit: bool = False) -> dict:
         """登录（必要时自动创建终端副本），有并发上限。返回 {id: result}。"""
         if self.mt5_import_error:
             return {i: {"ok": False, "message": self.mt5_import_error} for i in ids}
@@ -772,10 +773,10 @@ class Fleet:
                     if self.runtime.get(i, {}).get("link") == "online":
                         for k in ("copy", "launch", "login", "algo"):
                             self._prog_step(i, k, "ok", "已在线" if k == "login" else "")
-                    req = self._send(i, "connect")
+                    req = self._send(i, "connect", {"explicit": explicit})
                 else:
                     req = self._new_req()
-                    err = self._spawn(a, req)
+                    err = self._spawn(a, req, explicit)
                     if err:
                         self.pending.pop(req, None)
                         return {"ok": False, "message": err}
@@ -800,8 +801,9 @@ class Fleet:
 
     def login(self, ids: list[str], title: str = "批量登录"):
         self._prog_begin(title, ids, LOGIN_STEPS)
+        self._clear_algo_off(ids)      # 用户点的登录：算法交易恢复成开
         try:
-            results = self._login_ids(ids)
+            results = self._login_ids(ids, explicit=True)
         finally:
             self._prog_end()
         return self._summary(title, results, "登录")
@@ -1236,6 +1238,7 @@ class Fleet:
         """单个策略「启动」用：部署到指定账户（不替换同名 EA）。"""
         title = "部署策略"
         self._prog_begin(title, ids, DIST_STEPS)
+        self._clear_algo_off(ids)
         try:
             for i in ids:
                 self._prog_step(i, "login", "ok", "已在线" if self.runtime.get(i, {}).get("link") == "online" else "")
@@ -1257,6 +1260,7 @@ class Fleet:
         results: dict = {}
         per: dict = {}
         replace = bool(opts.get("replace", True))
+        self._clear_algo_off(ids)      # 分发是用户点的：EA 要跑，算法交易恢复成开
         try:
             need = []
             for i in ids:
@@ -1267,7 +1271,7 @@ class Fleet:
             if need:
                 for i in need:
                     self._prog_step(i, "login", "run", "未登录，正在自动登录")
-                lr = self._login_ids(need, finish=False)
+                lr = self._login_ids(need, finish=False, explicit=True)
                 for i, r in lr.items():
                     if r.get("ok"):
                         self._prog_step(i, "login", "ok", r.get("message", ""))
@@ -1373,6 +1377,35 @@ class Fleet:
         return {"deals": out, "accounts": len(reqs), "skipped": len([i for i in ids if i not in reqs])}
 
     # ---------------- 账户变更 ----------------
+    # ---------------- 交易页：一键开关算法交易 ----------------
+    def _clear_algo_off(self, ids: list[str]):
+        changed = False
+        for i in ids:
+            a = self.store.get(i)
+            if a and a.get("algo_off"):
+                a["algo_off"] = False
+                changed = True
+                self.account_changed(i)
+        if changed:
+            self.store.save_accounts()
+
+    def set_algo(self, ids: list[str], on: bool) -> dict:
+        """在所选账户（本程序启动的终端）里打开 / 关闭「算法交易」按钮，并按终端回读的状态报告结果。"""
+        title = "一键开启算法交易" if on else "一键关闭算法交易"
+        out = self.run_batch(title, "algo", ids, {"on": bool(on)}, 30, banner=False)
+        changed = False
+        for r in out["results"]:
+            a = self.store.get(r["id"])
+            if a and r["ok"]:
+                if bool(a.get("algo_off")) != (not on):
+                    a["algo_off"] = not on
+                    changed = True
+            r["trade_allowed"] = (r.get("detail") or {}).get("trade_allowed")
+        if changed:
+            self.store.save_accounts()
+        out["title"], out["on"] = title, bool(on)
+        return out
+
     def account_changed(self, acc_id: str, password: str | None = None):
         a = self.store.get(acc_id)
         if a and self._alive(acc_id):
