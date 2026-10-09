@@ -66,6 +66,7 @@ class Fleet:
         self.alert_popup = None
         self.quote: dict | None = None
         self.remote = RemoteGate(store)
+        self.clock = {"unix": 0, "offset": 0.0, "source": "", "at": 0.0}  # MT5 服务器时间（来自 tick）
         self._load_alerts()
         self.registry = Registry(store.data_dir)   # 本程序启动的终端 PID
         self.root = terminals_root()
@@ -219,6 +220,22 @@ class Fleet:
                     self._remember(acc_id, ev["snapshot"])
                     if rt.get("link") == "online":
                         self._pending_alert = self._apply_alerts_locked()
+                        stime = int((ev["snapshot"] or {}).get("server_time") or 0)
+                        if stime > 0:
+                            a = self.store.get(acc_id) or {}
+                            src = a.get("alias") or a.get("login") or acc_id
+                            # 多账户不同服务器：同一来源持续更新；来源掉线后才换别的账户
+                            cur = self.clock.get("source") or ""
+                            cur_online = False
+                            if cur:
+                                for ac in self.store.accounts:
+                                    label = ac.get("alias") or ac.get("login") or ac["id"]
+                                    if label == cur and (self.runtime.get(ac["id"]) or {}).get("link") == "online":
+                                        cur_online = True
+                                        break
+                            if not cur or src == cur or not cur_online:
+                                self.clock = {"unix": stime, "offset": float(stime) - time.time(),
+                                              "source": src, "at": time.time()}
             elif t == "result":
                 p = self.pending.get(ev.get("req"))
                 if p:
@@ -398,8 +415,10 @@ class Fleet:
                 eq = [x for x in (self._eq_subset(r, ids) for r in self.equity if r[0] > eq_since) if x]
             else:
                 eq = [r[:5] for r in self.equity if r[0] > eq_since]
-            out = {"started": int(self.started * 1000), "now": int(time.time() * 1000), "eqStep": EQ_STEP,
+            off = float(self.clock.get("offset") or 0)
+            out = {"started": int(self.started * 1000), "now": int((time.time() + off) * 1000), "eqStep": EQ_STEP,
                    "events": events, "eventSeq": self.event_seq, "eventsTotal": self.event_seq,
+                   "clockOffset": round(off, 3),
                    "equity": eq, "dealsVersion": self.deals_version, "dealsAt": int(self.deals_at * 1000),
                    "accounts": sorted(ids)}
             if deals_v != self.deals_version:
@@ -1406,6 +1425,110 @@ class Fleet:
         out["title"], out["on"] = title, bool(on)
         return out
 
+    # ---------------- 自定义分组 ----------------
+    def group_names(self) -> list[str]:
+        """设置里登记的分组 + 账户上实际用到的分组（去重，未分组始终在最后可选）。"""
+        raw = self.store.settings.get("account_groups") or []
+        names = []
+        for g in list(raw) + [a.get("group") or "" for a in self.store.accounts]:
+            g = str(g or "").strip() or "未分组"
+            if g not in names:
+                names.append(g)
+        if "未分组" in names:
+            names = [g for g in names if g != "未分组"] + ["未分组"]
+        return names
+
+    def _save_group_names(self, names: list[str]):
+        cleaned, seen = [], set()
+        for g in names:
+            g = str(g or "").strip() or "未分组"
+            if g == "未分组" or g in seen:
+                continue
+            seen.add(g)
+            cleaned.append(g)
+        self.store.settings["account_groups"] = cleaned
+        self.store.save_settings()
+
+    def create_group(self, name: str) -> dict:
+        name = (name or "").strip()
+        if not name:
+            return {"ok": False, "message": "请填写分组名"}
+        if name == "未分组":
+            return {"ok": False, "message": "「未分组」是系统保留名"}
+        if len(name) > 32:
+            return {"ok": False, "message": "分组名不要超过 32 个字"}
+        names = [g for g in self.group_names() if g != "未分组"]
+        if name in names:
+            return {"ok": False, "message": f"分组「{name}」已经有了"}
+        names.append(name)
+        self._save_group_names(names)
+        self.log("", "分组", True, f"新建分组「{name}」", "本机")
+        return {"ok": True, "message": f"已新建「{name}」", "groups": self.group_names()}
+
+    def rename_group(self, old: str, new: str) -> dict:
+        old, new = (old or "").strip(), (new or "").strip()
+        if not old or not new:
+            return {"ok": False, "message": "请填写原名和新名"}
+        if old == "未分组" or new == "未分组":
+            return {"ok": False, "message": "「未分组」不能改名"}
+        if old == new:
+            return {"ok": True, "message": "名字没变", "groups": self.group_names()}
+        names = [g for g in self.group_names() if g != "未分组"]
+        if old not in names and not any(a.get("group") == old for a in self.store.accounts):
+            return {"ok": False, "message": f"没有分组「{old}」"}
+        if new in names and new != old:
+            return {"ok": False, "message": f"分组「{new}」已经有了"}
+        names = [new if g == old else g for g in names]
+        if new not in names:
+            names.append(new)
+        n = 0
+        for a in self.store.accounts:
+            if a.get("group") == old:
+                a["group"] = new
+                n += 1
+                self.account_changed(a["id"])
+        self._save_group_names(names)
+        self.store.save_accounts()
+        self.log("", "分组", True, f"分组「{old}」改名为「{new}」（{n} 个账户）", "本机")
+        return {"ok": True, "message": f"已改名为「{new}」", "moved": n, "groups": self.group_names()}
+
+    def delete_group(self, name: str) -> dict:
+        name = (name or "").strip()
+        if not name or name == "未分组":
+            return {"ok": False, "message": "「未分组」不能删除"}
+        names = [g for g in self.group_names() if g != "未分组" and g != name]
+        n = 0
+        for a in self.store.accounts:
+            if a.get("group") == name:
+                a["group"] = "未分组"
+                n += 1
+                self.account_changed(a["id"])
+        self._save_group_names(names)
+        self.store.save_accounts()
+        self.log("", "分组", True, f"删除分组「{name}」，{n} 个账户回到未分组", "本机")
+        return {"ok": True, "message": f"已删除「{name}」", "moved": n, "groups": self.group_names()}
+
+    def assign_group(self, ids: list[str], group: str) -> dict:
+        group = (group or "").strip() or "未分组"
+        if group != "未分组":
+            names = [g for g in self.group_names() if g != "未分组"]
+            if group not in names:
+                names.append(group)
+                self._save_group_names(names)
+        n = 0
+        for i in ids:
+            a = self.store.get(i)
+            if not a:
+                continue
+            if a.get("group") != group:
+                a["group"] = group
+                n += 1
+                self.account_changed(i)
+        if n:
+            self.store.save_accounts()
+            self.log("", "分组", True, f"{n} 个账户移入「{group}」", "本机")
+        return {"ok": True, "message": f"已把 {n} 个账户放到「{group}」", "moved": n, "groups": self.group_names()}
+
     def account_changed(self, acc_id: str, password: str | None = None):
         a = self.store.get(acc_id)
         if a and self._alive(acc_id):
@@ -1592,6 +1715,11 @@ class Fleet:
         return {"accounts": accounts, "settings": settings, "banner": self.banner, "mock": self.mock,
                 "alerts": list(self.alerts), "alertPopup": popup, "popupMs": alerts.POPUP_MS,
                 "quote": self.quote, "remote": self.remote.public(),
+                "clock": {"unix": int(self.clock.get("unix") or 0),
+                          "offset": round(float(self.clock.get("offset") or 0), 3),
+                          "source": self.clock.get("source") or "",
+                          "label": "服务器时间"},
+                "groups": self.group_names(),
                 "mt5Error": self.mt5_import_error, "dpapi": secrets.dpapi_supported(),
                 "library": self.library(), "firstLaunch": self.store.first_launch,
                 "terminalsRoot": str(self.root), "dataDir": str(self.store.data_dir), "now": int(time.time() * 1000),

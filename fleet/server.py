@@ -232,6 +232,7 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
         if err:
             raise HTTPException(400, err)
         a = fleet.store.add(body)
+        fleet.assign_group([a["id"]], a.get("group") or "未分组")
         fleet.log(a["id"], "添加账户", True, "已加入台账" + ("" if body.get("password") else "，没有密码，暂时不能登录"))
         return fleet.store.public(a)
 
@@ -244,6 +245,8 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
             raise HTTPException(400, err)
         a = fleet.store.update(acc_id, body)
         fleet.account_changed(acc_id, body.get("password") or None)
+        if body.get("group") is not None:
+            fleet.assign_group([acc_id], a.get("group") or "未分组")
         fleet.log(acc_id, "修改账户", True, "已更新账户资料" + ("（含密码）" if body.get("password") else ""))
         return fleet.store.public(a)
 
@@ -273,6 +276,22 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
             added += 1
             fleet.log(a["id"], "导入", True, "已从 CSV 导入" + ("，密码已加密保存" if r.get("password") else "，没有密码，暂时不能登录"))
         return {"added": added, "errors": errors}
+
+    @app.post("/api/groups")
+    def groups_create(body: dict):
+        return fleet.create_group(str(body.get("name") or ""))
+
+    @app.post("/api/groups/rename")
+    def groups_rename(body: dict):
+        return fleet.rename_group(str(body.get("from") or ""), str(body.get("to") or ""))
+
+    @app.post("/api/groups/delete")
+    def groups_delete(body: dict):
+        return fleet.delete_group(str(body.get("name") or ""))
+
+    @app.post("/api/groups/assign")
+    def groups_assign(body: dict):
+        return fleet.assign_group(ids_of(body), str(body.get("group") or "未分组"))
 
     @app.post("/api/accounts/quick")
     def quick_add(body: dict):

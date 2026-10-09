@@ -528,6 +528,34 @@ class Worker:
                 continue
         return None
 
+    def _server_time(self, quotes: dict | None = None) -> int:
+        """券商服务器时间（秒，和 MT5 终端右下角一致）。优先用关注品种 / USDJPY 的 tick.time。"""
+        mt5 = self.mt5
+        if mt5 is None:
+            return 0
+        names = []
+        for q in (quotes or {}).values():
+            if isinstance(q, dict) and q.get("symbol") and not q.get("error"):
+                names.append(q["symbol"])
+        for n in ("USDJPYc", "USDJPY", "EURUSD", "XAUUSD"):
+            if n not in names:
+                names.append(n)
+        for name in names:
+            try:
+                tick = mt5.symbol_info_tick(name)
+                if tick is not None and getattr(tick, "time", 0):
+                    return int(tick.time)
+            except Exception:
+                continue
+        try:  # 任意有报价的品种
+            for s in (mt5.symbols_get() or ())[:30]:
+                tick = mt5.symbol_info_tick(s.name)
+                if tick is not None and getattr(tick, "time", 0):
+                    return int(tick.time)
+        except Exception:
+            pass
+        return 0
+
     def snapshot(self) -> dict:
         mt5 = self.mt5
         info = mt5.account_info()
@@ -579,6 +607,7 @@ class Worker:
             },
             "quotes": quotes,
             "usdjpy": self.usdjpy_quote(),
+            "server_time": self._server_time(quotes),
         }
 
     def terminal_gone(self) -> bool:
