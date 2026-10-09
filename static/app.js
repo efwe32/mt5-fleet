@@ -283,32 +283,56 @@ function filtered() {
 function openGroups() {
   const st = ui.state; if (!st) return;
   const groups = (st.groups || []).filter((g) => g !== "未分组");
-  const sel = selIds();
+  const accs = st.accounts.slice();
+  const gLabel = (a) => a.group || "未分组";
   modal({
     title: "分组管理",
-    desc: "自定义账户分组，会同步到快捷交易面板和算法交易开关的「按分组」。分组保存在本机 data，更新程序不会丢掉。",
+    desc: "每个分组可单独勾选任意账户加入或移出。一个账户只属于一个分组；加入新组会离开旧组。会同步到快捷交易和算法交易开关的「按分组」。",
     wide: true,
     body: `
       <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
         <label class="field" style="flex:1;min-width:160px"><span>新建分组</span><input class="input" id="gNew" maxlength="32" placeholder="例如 亚洲盘"></label>
         <button class="btn primary" type="button" data-gact="create">新建</button>
       </div>
-      <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>分组</th><th>账户数</th><th>操作</th></tr></thead><tbody id="gRows">
+      <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>分组</th><th>账户数</th><th>操作</th></tr></thead><tbody>
         ${["未分组", ...groups].map((g) => {
-          const n = st.accounts.filter((a) => (a.group || "未分组") === g).length;
+          const n = accs.filter((a) => gLabel(a) === g).length;
           const locked = g === "未分组";
-          return `<tr><td><b>${esc(g)}</b>${locked ? ' <span class="small muted">系统</span>' : ""}</td><td class="num">${n}</td>
+          return `<tr data-grow="${esc(g)}"><td><b>${esc(g)}</b>${locked ? ' <span class="small muted">系统</span>' : ""}</td><td class="num">${n}</td>
             <td class="row">${locked ? "" : `<button class="btn sm" type="button" data-gact="rename" data-g="${esc(g)}">重命名</button><button class="btn sm danger" type="button" data-gact="del" data-g="${esc(g)}">删除</button>`}</td></tr>`;
         }).join("")}
       </tbody></table></div>
       <div class="row" style="margin-top:14px;gap:8px;align-items:flex-end;flex-wrap:wrap">
-        <label class="field" style="flex:1;min-width:160px"><span>把已勾选的 ${sel.length} 个账户移入</span>
-          <select class="input" id="gMove">${["未分组", ...groups].map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("")}</select></label>
-        <button class="btn" type="button" data-gact="assign" ${sel.length ? "" : "disabled"}>移入分组</button>
+        <label class="field" style="flex:1;min-width:180px"><span>目标分组</span>
+          <select class="input" id="gTarget">${groups.length
+            ? groups.map((g, i) => `<option value="${esc(g)}" ${i === 0 ? "selected" : ""}>${esc(g)}</option>`).join("")
+            : `<option value="" disabled selected>（请先新建分组）</option>`}</select></label>
+        <button class="btn sm" type="button" data-gact="pick-all">全选账户</button>
+        <button class="btn sm" type="button" data-gact="pick-none">清空勾选</button>
+        <button class="btn sm" type="button" data-gact="pick-in">勾选已在本组</button>
+        <button class="btn sm" type="button" data-gact="pick-out">勾选不在本组</button>
       </div>
-      <p class="small muted" style="margin:8px 0 0">也可以在编辑账户时改「分组」；快捷交易 / 算法交易开关里的「按分组」会立刻用上这些名字。</p>`,
+      <div class="pick" id="gAccList" style="margin-top:10px;max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px">
+        ${accs.length ? accs.map((a) => {
+          const g = gLabel(a);
+          return `<label style="display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:8px">
+            <input type="checkbox" data-gid="${esc(a.id)}" data-cur="${esc(g)}">
+            <span style="flex:1;min-width:0"><b>${esc(a.alias || a.login)}</b> <span class="sub num">${esc(a.login)}</span>
+            <span class="small muted"> · 当前：${esc(g)}</span></span>
+            <span class="sub">${a.link === "online" ? '<span class="up-t">在线</span>' : "离线"}</span>
+          </label>`;
+        }).join("") : `<div class="small muted" style="padding:10px">还没有账户，先在账号页添加。</div>`}
+      </div>
+      <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" type="button" data-gact="add" ${groups.length && accs.length ? "" : "disabled"}>把勾选的账户加入目标分组</button>
+        <button class="btn" type="button" data-gact="remove" ${accs.length ? "" : "disabled"}>把勾选的账户移出到未分组</button>
+      </div>
+      <p class="small muted" style="margin:8px 0 0">可只勾选一部分账户；加入目标分组时会离开原来的分组。删除分组仍会把该组全部账户回到「未分组」。</p>`,
     actions: [{ label: "关闭" }],
     onMount: (root) => {
+      const picked = () => $$("#gAccList input[data-gid]:checked", root).map((el) => el.dataset.gid);
+      const target = () => ($("#gTarget", root)?.value || "").trim();
+      const refresh = async () => { closeModal(); await poll(); return openGroups(); };
       root.addEventListener("click", async (e) => {
         const b = e.target.closest("[data-gact]"); if (!b) return;
         const act = b.dataset.gact;
@@ -317,7 +341,7 @@ function openGroups() {
             const name = $("#gNew", root).value.trim();
             const r = await api("/api/groups", { name });
             if (!r.ok) return toast(r.message, true);
-            toast(r.message); closeModal(); await poll(); return openGroups();
+            toast(r.message); return refresh();
           }
           if (act === "rename") {
             const from = b.dataset.g;
@@ -325,21 +349,47 @@ function openGroups() {
             if (to == null) return;
             const r = await api("/api/groups/rename", { from, to: to.trim() });
             if (!r.ok) return toast(r.message, true);
-            toast(r.message); closeModal(); await poll(); return openGroups();
+            toast(r.message); return refresh();
           }
           if (act === "del") {
             const name = b.dataset.g;
             if (!confirm(`删除分组「${name}」？里面的账户会回到「未分组」。`)) return;
             const r = await api("/api/groups/delete", { name });
             if (!r.ok) return toast(r.message, true);
-            toast(r.message); closeModal(); await poll(); return openGroups();
+            toast(r.message); return refresh();
           }
-          if (act === "assign") {
-            if (!sel.length) return toast("请先在账号页勾选账户", true);
-            const group = $("#gMove", root).value;
-            const r = await api("/api/groups/assign", { ids: sel, group });
+          if (act === "pick-all") {
+            $$("#gAccList input[data-gid]", root).forEach((el) => { el.checked = true; });
+            return;
+          }
+          if (act === "pick-none") {
+            $$("#gAccList input[data-gid]", root).forEach((el) => { el.checked = false; });
+            return;
+          }
+          if (act === "pick-in" || act === "pick-out") {
+            const g = target();
+            if (!g) return toast("请先选择目标分组", true);
+            $$("#gAccList input[data-gid]", root).forEach((el) => {
+              const inG = el.dataset.cur === g;
+              el.checked = act === "pick-in" ? inG : !inG;
+            });
+            return;
+          }
+          if (act === "add") {
+            const g = target();
+            if (!g) return toast("请先新建并选择目标分组", true);
+            const ids = picked();
+            if (!ids.length) return toast("请勾选要加入的账户", true);
+            const r = await api("/api/groups/assign", { ids, group: g });
             if (!r.ok) return toast(r.message, true);
-            toast(r.message); closeModal(); await poll();
+            toast(r.message); return refresh();
+          }
+          if (act === "remove") {
+            const ids = picked();
+            if (!ids.length) return toast("请勾选要移出的账户", true);
+            const r = await api("/api/groups/assign", { ids, group: "未分组" });
+            if (!r.ok) return toast(r.message, true);
+            toast(r.message); return refresh();
           }
         } catch (err) { toast(err.message, true); }
       });

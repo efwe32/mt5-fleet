@@ -395,6 +395,19 @@ r = c.post("/api/groups/rename", json={"from": "亚洲盘", "to": "欧洲盘"}).
 check("重命名分组", r.get("ok") and next(a for a in c.get("/api/state").json()["accounts"] if a["id"] == aid0)["group"] == "欧洲盘", r)
 r = c.post("/api/groups/delete", json={"name": "欧洲盘"}).json()
 check("删除分组回未分组", r.get("ok") and next(a for a in c.get("/api/state").json()["accounts"] if a["id"] == aid0)["group"] == "未分组", r)
+# 每个组可勾选任意子集加入 / 移出（不必整组全移）
+c.post("/api/groups", json={"name": "子集组"})
+ids2 = [a["id"] for a in c.get("/api/state").json()["accounts"] if a["link"] == "online"][:3]
+assert len(ids2) >= 2
+r = c.post("/api/groups/assign", json={"ids": ids2[:2], "group": "子集组"}).json()
+check("部分账户加入分组", r.get("ok") and r.get("moved") == 2, r)
+st = c.get("/api/state").json()
+by = {a["id"]: a["group"] for a in st["accounts"]}
+check("只改勾选的两个", by[ids2[0]] == "子集组" and by[ids2[1]] == "子集组" and (len(ids2) < 3 or by[ids2[2]] != "子集组"), by)
+r = c.post("/api/groups/assign", json={"ids": [ids2[0]], "group": "未分组"}).json()
+check("单个移出到未分组", r.get("ok") and next(a for a in c.get("/api/state").json()["accounts"] if a["id"] == ids2[0])["group"] == "未分组", r)
+c.post("/api/groups/assign", json={"ids": [ids2[1]], "group": "未分组"})
+c.post("/api/groups/delete", json={"name": "子集组"})
 # 登录后应有服务器时间（mock tick.time ≈ 本机）
 online = [a for a in c.get("/api/state").json()["accounts"] if a["link"] == "online"]
 if online:
