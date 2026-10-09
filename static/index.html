@@ -37,6 +37,7 @@
         <div><dt>在线</dt><dd class="num" id="sumOnline">0/0</dd></div>
         <div><dt>净值</dt><dd class="num" id="sumEquity">0.00</dd></div>
         <div><dt>浮盈</dt><dd class="num" id="sumFloat">0.00</dd></div>
+        <span class="clock" id="srvClock" title="MT5 券商服务器时间（和终端右下角一致，不是北京时间）">服务器时间 —</span>
         <span class="mode live" id="modeBtn" title="所有操作都会真实发送到券商，执行前会弹出确认"><span class="dot"></span><span id="modeText">实盘 · 会真实发单</span></span>
       </dl>
     </header>
@@ -53,6 +54,7 @@
           <button class="btn ghost" data-act="add">仅添加</button>
           <button class="btn ghost" data-act="import">导入 CSV</button>
           <button class="btn ghost" data-act="example">示例 CSV</button>
+          <button class="btn" data-act="groups">分组管理</button>
           <button class="btn danger" data-act="delete">删除</button>
           <input type="file" id="csvFile" accept=".csv,text/csv" class="sr-only">
         </div>

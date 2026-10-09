@@ -375,6 +375,41 @@ check("快捷面板：美分账户报价和持仓按 USDJPYc 统计", q["quote"]
 r = c.post("/api/quick/action", json={"action": "close_long", "ids": [cent], "symbol": "USDJPY", "only_symbol": True}).json()
 check("快捷面板：仅当前品种平仓也认 USDJPYc", r["ok"] == 1 and "成功平掉 2/2" in r["results"][0]["message"], r["results"][0]["message"])
 
+# 自定义分组 + 服务器时间
+st = c.get("/api/state").json()
+check("状态含 groups 与 clock", isinstance(st.get("groups"), list) and "clock" in st, st.get("clock"))
+check("默认分组含主仓跟单测试", all(g in st["groups"] for g in ("主仓", "跟单", "测试")), st["groups"])
+r = c.post("/api/groups", json={"name": "亚洲盘"}).json()
+check("新建分组", r.get("ok") and "亚洲盘" in r.get("groups", []), r)
+r = c.post("/api/groups", json={"name": "亚洲盘"}).json()
+check("重复分组拒绝", not r.get("ok"), r)
+r = c.post("/api/groups", json={"name": "未分组"}).json()
+check("未分组保留名拒绝", not r.get("ok"), r)
+aid0 = st["accounts"][0]["id"]
+r = c.post("/api/groups/assign", json={"ids": [aid0], "group": "亚洲盘"}).json()
+check("账户移入分组", r.get("ok") and r.get("moved") == 1, r)
+st = c.get("/api/state").json()
+check("账户 group 字段已更新", next(a for a in st["accounts"] if a["id"] == aid0)["group"] == "亚洲盘")
+check("groups 列表含亚洲盘", "亚洲盘" in st["groups"], st["groups"])
+r = c.post("/api/groups/rename", json={"from": "亚洲盘", "to": "欧洲盘"}).json()
+check("重命名分组", r.get("ok") and next(a for a in c.get("/api/state").json()["accounts"] if a["id"] == aid0)["group"] == "欧洲盘", r)
+r = c.post("/api/groups/delete", json={"name": "欧洲盘"}).json()
+check("删除分组回未分组", r.get("ok") and next(a for a in c.get("/api/state").json()["accounts"] if a["id"] == aid0)["group"] == "未分组", r)
+# 登录后应有服务器时间（mock tick.time ≈ 本机）
+online = [a for a in c.get("/api/state").json()["accounts"] if a["link"] == "online"]
+if online:
+    for _ in range(15):
+        st = c.get("/api/state").json()
+        if st.get("clock", {}).get("unix"):
+            break
+        time.sleep(0.4)
+    ck = st.get("clock") or {}
+    check("有服务器时间 clock.unix", int(ck.get("unix") or 0) > 0, ck)
+    check("clock 带服务器时间标签", ck.get("label") == "服务器时间", ck)
+    check("clock.offset 接近 0（mock）", abs(float(ck.get("offset") or 0)) < 5, ck)
+html3 = c.get("/").text
+check("前端有分组管理和服务器时间", "分组管理" in html3 and "srvClock" in html3 and "服务器时间" in html3)
+
 r = c.post("/api/accounts/delete", json={"ids": qids + [cent]}).json()
 check("清理测试账户", r["removed"] == 4)
 
