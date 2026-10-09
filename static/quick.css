@@ -77,17 +77,47 @@ details.adv[open]>summary{border-bottom:1px solid var(--line)}
 details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
 @media (max-width:1100px){.qp-wrap{grid-template-columns:1fr}.qp{max-width:560px}}
 @media (max-width:560px){.qp{padding:12px 10px}.qb{font-size:17px;min-height:52px}.qp .pd-pop{width:calc(100vw - 32px)}.qp-head{flex-wrap:wrap}.qp .pd-pick{width:100%}.qp .pd-pickbtn{width:100%;max-width:none;text-align:left}.qp .pd-pop{left:0;right:auto}}
-/* 算法交易开关 */
-.al-panel{margin-bottom:16px;max-width:1100px}
+/* 算法交易开关：和上面的快捷交易面板同一套黑底（选择账户弹层默认是收益页的白底，这里必须盖掉） */
+.al-panel{margin-bottom:16px;max-width:1100px;background:#000;border:1px solid #2c2c2c;color:#f2f2f2;
+  --pd-line:#2c2c2c;--pd-line2:#222;--pd-ink:#f2f2f2;--pd-mut:#9a9a9a;--pd-faint:#6c6c6c;--pd-g:#33e07a;
+  --line:#2a2a2a;--muted:#9a9a9a;--fg:#f2f2f2;--up:#3dff5a;--down:#ff6b6b}
+.al-panel h2{color:#fff}
+.al-panel .muted,.al-panel .small.muted{color:#9a9a9a}
 .al-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.al-panel .pd-pickbtn{background:#111;color:#e8e8e8;border-color:#3a3a3a;max-width:280px}
+.al-panel .pd-pickbtn:hover,.al-panel .pd-pickbtn[aria-expanded="true"]{background:#1a1a1a;border-color:#00bcd4;color:#fff}
+.al-panel .pd-pickbtn.on{background:#00363d;color:#7ff3ff;border-color:#00bcd4}
+.al-panel .pd-pop{left:0;right:auto;width:380px;background:#0d0d0d;border-color:#333;box-shadow:0 14px 36px rgba(0,0,0,.6);color:#eee}
+.al-panel .pd-pop .pp-row button{background:#1b1b1b;border-color:#333;color:#ddd}
+.al-panel .pd-pop .pp-row button:hover{background:#262626;color:#fff}
+.al-panel .pd-pop .pp-lab,.al-panel .pd-pop .pp-foot{color:#9a9a9a}
+.al-panel .pd-pop label{color:#eee}
+.al-panel .pd-pop label:hover{background:#161616}
+.al-panel .pd-pop label input{accent-color:#00bcd4;width:16px;height:16px}
+.al-panel .pd-pop label .nm{color:#f2f2f2}
+.al-panel .pd-pop label .lg{color:#9a9a9a}
+.al-panel .pd-pop label .st{color:#8c8c8c}
+.al-panel .pd-pop label .st.on{color:#3dff5a}
+.al-panel .pd-pop .pp-foot button{background:#00bcd4;color:#001316}
 .al-btns{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-.al-btns .btn{min-width:120px;min-height:40px}
-.al-rh{margin:6px 0 4px}.al-x{border:0;background:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 6px}
+.al-btns .btn{min-width:120px;min-height:44px;border-width:2px;font-weight:600}
+.al-btns .btn.up{background:#003a00;color:#5dff5d;border-color:#0d5c0d}
+.al-btns .btn.up:hover:not(:disabled){background:#004c00;color:#7dff7d}
+.al-btns .btn.danger{background:#4a0000;color:#ff6b6b;border-color:#6e1010}
+.al-btns .btn.danger:hover:not(:disabled){background:#5e0000;color:#ff8d8d}
+.al-btns #alSum{color:#cfcfcf}
+.al-panel .up-t{color:#3dff5a}.al-panel .down-t{color:#ff6b6b}
+.al-rh{margin:6px 0 4px;color:#eee}.al-x{border:0;background:none;color:#888;font-size:16px;cursor:pointer;padding:0 6px}
+.al-x:hover{color:#fff}
 .al-rl{display:flex;flex-direction:column;gap:3px;font-size:13px;margin-bottom:10px;max-height:220px;overflow:auto}
 .al-tw{overflow-x:auto}
-.al-t{width:100%;border-collapse:collapse;font-size:13px}
-.al-t th,.al-t td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-.al-t td.small{white-space:normal;min-width:160px}
-.al-t th{color:var(--muted);font-weight:500}
-@media (max-width:560px){.al-head .pd-pick{width:100%}.al-head .pd-pickbtn{width:100%;max-width:none;text-align:left}.al-head .pd-pop{width:100%}
+.al-t{width:100%;border-collapse:collapse;font-size:13px;color:#e8e8e8}
+.al-t th,.al-t td{text-align:left;padding:7px 8px;border-bottom:1px solid #191919;white-space:nowrap;background:transparent;color:#e8e8e8}
+.al-t td.small{white-space:normal;min-width:160px;color:#9a9a9a}
+.al-t th{color:#8c8c8c;font-weight:500}
+.al-panel .tag{color:#cfcfcf;border-color:#3a3a3a;background:#111}
+.al-panel .tag.ok{color:#3dff5a;border-color:#0d5c0d}
+.al-panel .tag.warn{color:#ff6b6b;border-color:#6e1010}
+@media (max-width:560px){.al-head .pd-pick{width:100%}.al-panel .pd-pickbtn{width:100%;max-width:none;text-align:left}
+  .al-panel .pd-pop{width:calc(100vw - 32px);left:0;right:auto}
   .al-btns .btn{flex:1;min-height:48px;font-size:16px}.al-btns #alSum{width:100%}.al-t{font-size:12px}.al-t th,.al-t td{padding:6px 5px}}
