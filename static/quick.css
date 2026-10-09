@@ -118,6 +118,21 @@ details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
 .al-panel .tag{color:#cfcfcf;border-color:#3a3a3a;background:#111}
 .al-panel .tag.ok{color:#3dff5a;border-color:#0d5c0d}
 .al-panel .tag.warn{color:#ff6b6b;border-color:#6e1010}
-@media (max-width:560px){.al-head .pd-pick{width:100%}.al-panel .pd-pickbtn{width:100%;max-width:none;text-align:left}
-  .al-panel .pd-pop{width:calc(100vw - 32px);left:0;right:auto}
-  .al-btns .btn{flex:1;min-height:48px;font-size:16px}.al-btns #alSum{width:100%}.al-t{font-size:12px}.al-t th,.al-t td{padding:6px 5px}}
+@media (max-width:760px){
+  .al-panel{padding:14px 12px;color-scheme:dark}
+  .al-head{width:100%}
+  .al-head .pd-pick,.al-panel .pd-pick{width:100%}
+  .al-panel .pd-pickbtn{width:100%;max-width:none;text-align:left;min-height:44px;font-size:15px}
+  .al-panel .pd-pop{position:fixed;left:12px;right:12px;top:auto;width:auto;max-width:none;max-height:70vh;overflow:auto;
+    background:#0d0d0d !important;border-color:#333 !important;color:#eee !important;z-index:80}
+  .al-panel .pd-pop .pp-row button{min-height:40px;font-size:14px;color:#ddd !important;background:#1b1b1b !important}
+  .al-panel .pd-pop label{min-height:44px;padding:10px 8px;color:#eee !important}
+  .al-panel .pd-pop label .nm{color:#f2f2f2 !important}
+  .al-panel .pd-pop label .lg,.al-panel .pd-pop .pp-lab,.al-panel .pd-pop .pp-foot{color:#9a9a9a !important}
+  .al-panel .pd-pop .pp-foot button{min-height:44px;font-size:15px}
+  .al-btns{width:100%}
+  .al-btns .btn{flex:1;min-height:52px;font-size:17px}
+  .al-btns #alSum{width:100%;font-size:13px}
+  .al-t{font-size:12px}.al-t th,.al-t td{padding:8px 5px}
+  .al-panel .tag{font-size:12px;padding:2px 8px}
+}
