@@ -11,7 +11,8 @@
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const pad = (n) => String(n).padStart(2, "0");
-  const hm = (ms) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  // 服务器时间：D.srvSkew = MT5 offset(ms)；UTC 取位避免再被北京时区加一层
+  const hm = (ms) => { const d = new Date((Number(ms) || Date.now()) + (D.srvSkew || 0)); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
   const nf = (n, d = 2) => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
   const sgn = (n, d = 2) => (n >= 0 ? "+" : "-") + nf(Math.abs(n), d);
   const usd = (n, d = 2) => (n >= 0 ? "+$" : "-$") + nf(Math.abs(n), d);
@@ -94,7 +95,7 @@
     const deals = [];
     sc.forEach((a) => (D.deals[a.id] || []).forEach((d) => deals.push([d[0], d[1], d[2], a.id])));
     deals.sort((x, y) => x[0] - y[0]);
-    const now = new Date(), day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+    const sn = new Date(Date.now() + (D.srvSkew || 0)); const day0 = Date.UTC(sn.getUTCFullYear(), sn.getUTCMonth(), sn.getUTCDate()) / 1000;
     const g = { n: deals.length, todayClosed: 0, todayBy: {}, wins: 0, losses: 0, gp: 0, gl: 0, best: 0, sum: 0 };
     deals.forEach((d) => {
       const p = d[1]; g.sum += p;
@@ -132,7 +133,7 @@
     g.ridge = ridge; g.M = M; g.G = G; g.Z0 = Z0; g.Z1 = Z1;
     // 每日盈亏、最大回撤、平仓累计曲线
     const byDay = new Map();
-    deals.forEach((d) => { const t = new Date(d[0] * 1000); const k = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime(); byDay.set(k, (byDay.get(k) || 0) + d[1]); });
+    deals.forEach((d) => { const t = new Date(d[0] * 1000); const k = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()); byDay.set(k, (byDay.get(k) || 0) + d[1]); });
     const days = [...byDay.entries()].sort((a, b) => a[0] - b[0]);
     let cum = 0, peak = 0, dd = 0; deals.forEach((d) => { cum += d[1]; peak = Math.max(peak, cum); dd = Math.max(dd, peak - cum); });
     g.maxDD = dd;
@@ -143,10 +144,10 @@
       last.forEach((v) => { bins[Math.min(NB - 1, Math.floor(((v - bmin) / (bmax - bmin)) * NB))]++; });
     }
     g.bins = bins; g.bmin = bmin; g.bmax = bmax; g.days = days.length;
-    const t30 = Date.now() / 1000 - 30 * 86400; let c2 = 0; g.closedSeries = [];
+    const t30 = Date.now() / 1000 + (D.srvSkew || 0) / 1000 - 30 * 86400; let c2 = 0; g.closedSeries = [];
     deals.forEach((d) => { c2 += d[1]; if (d[0] >= t30) g.closedSeries.push([d[0], c2]); });
     // 最近 7 天的 账户→品种 成交次数（没有持仓时用于弦图）
-    const t7 = Date.now() / 1000 - 7 * 86400; g.recentFlows = {};
+    const t7 = Date.now() / 1000 + (D.srvSkew || 0) / 1000 - 7 * 86400; g.recentFlows = {};
     deals.forEach((d) => { if (d[0] >= t7 && d[2]) { const k = d[3] + "|" + d[2]; g.recentFlows[k] = (g.recentFlows[k] || 0) + 1; } });
     D.agg = g;
     return g;
@@ -203,7 +204,7 @@
       D.started = r.started; D.seq = 0; D.eqLast = 0; D.dealsV = -1; D.events = []; D.equity = []; D.logInit = false; $("pdRows").innerHTML = "";
       return pollDesk();
     }
-    D.started = r.started; D.srvSkew = r.now - Date.now(); D.total = filterIds() ? null : r.eventsTotal;
+    D.started = r.started; if (!D._clockFromState) D.srvSkew = r.now - Date.now(); D.total = filterIds() ? null : r.eventsTotal;
     if (r.equity && r.equity.length) { D.equity.push(...r.equity); D.eqLast = D.equity[D.equity.length - 1][0]; if (D.equity.length > 9500) D.equity.splice(0, D.equity.length - 9500); }
     if (r.deals) { D.deals = r.deals; D.dealsV = r.dealsVersion; D.aggKey = ""; }
     const fresh = r.events || [];
@@ -253,8 +254,8 @@
     pop.classList.toggle("hidden", !D.popOpen);
     if (!D.popOpen) return;
     const accs = allAccs(), sel = new Set(f || accs.map((a) => a.id));
-    const groups = [...new Set(accs.map((a) => a.group || "未分组"))];
-    const key = JSON.stringify(accs.map((a) => [a.id, a.alias, a.login, a.group, a.link]));
+    const groups = (D.st && D.st.groups && D.st.groups.length) ? D.st.groups.slice() : [...new Set(accs.map((a) => a.group || "未分组"))];
+    const key = JSON.stringify([groups, accs.map((a) => [a.id, a.alias, a.login, a.group, a.link])]);
     if (pop._k === key) {   // 账户列表没变：只同步勾选状态，不重建（保持焦点和滚动位置）
       pop.querySelectorAll("input[data-ppid]").forEach((cb) => { const v = sel.has(cb.dataset.ppid); if (cb.checked !== v) cb.checked = v; });
       const foot = pop.querySelector(".pp-foot span"); if (foot && !foot._hint) { foot.textContent = `已选 ${sel.size} / ${accs.length} · 自动保存`; foot.style.color = ""; }
@@ -451,13 +452,13 @@
     const pce = $("pdPnlPct"); setText(pce, `${sgn(tv("pct"))}% · 浮亏金额 ${sgn(tv("fl"))}`);
     const pcc = "pd-cap " + (pv >= 0 ? "pd-g" : "pd-r"); if (pce.className !== pcc) pce.className = pcc;
     // 运行时长
-    const srvNow = Date.now() + D.srvSkew, up = Math.max(0, (srvNow - (D.started || srvNow)) / 1000);
+    const up = Math.max(0, (Date.now() - (D.started || Date.now())) / 1000);
     const hh = Math.floor(up / 3600), mm = Math.floor((up % 3600) / 60), ss = Math.floor(up % 60);
     setText($("pdMission"), hh ? `${hh}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`);
-    setText($("pdMissionCap"), `${hm(D.started || srvNow)} → ${hm(srvNow)} / ${hh ? hh + " 小时" : Math.max(1, mm) + " 分钟"}`);
-    // 头部
+    setText($("pdMissionCap"), `${hm(D.started || Date.now())} → ${hm(Date.now())} / ${hh ? hh + " 小时" : Math.max(1, mm) + " 分钟"}`);
+    // 头部（服务器时间）
     const allOn = allAccs().filter((a) => a.link === "online").length;
-    setText($("pdClock"), `${hm(srvNow)} / 13 小时`);
+    setText($("pdClock"), `${hm(Date.now())} / 13 小时`);
     setText($("pdSub"), `${allOn}/${allAccs().length} 个终端在线`);
     if (D.k._pick !== pickLabel()) { D.k._pick = pickLabel(); renderPick(); }
     const live = $("pdLive"), lc = "pd-live" + (allOn ? "" : err ? " err" : " off");
@@ -515,7 +516,7 @@
     const L = Math.max(44, (D.histLW || 40) + 10), R = 14, T = 16, B = 24, pw = w - L - R, ph = h - T - B;
     D.reveal = Math.min(1, D.reveal + dt / 1.4);
     let pts = [];
-    const nowS = (Date.now() + D.srvSkew) / 1000;
+    const nowS = Date.now() / 1000;
     if (D.histMode === "eq") {
       pts = D.equity.map((r) => [r[0], r[1]]);
       const lastS = pts.length ? pts[pts.length - 1][0] : 0;
@@ -912,10 +913,13 @@
     stop() { D.active = false; clearTimeout(D.pollTimer); if (D.raf) cancelAnimationFrame(D.raf); D.raf = 0; },
     onState(st) {
       D.st = st;
-      // 两次后台采样之间，用前端轮询到的净值补点，让曲线更细腻
+      if (st && st.clock && (st.clock.unix || st.clock.offset)) {
+        D.srvSkew = (Number(st.clock.offset) || 0) * 1000; D._clockFromState = true;
+      }
+      // 净值补点用本机 unix；标签通过 hm 加偏移显示服务器时间
       const on = scopeAccs().filter((a) => a.link === "online");
       if (on.length) {
-        D.fine = D.fine || []; const t = (Date.now() + D.srvSkew) / 1000;
+        D.fine = D.fine || []; const t = Date.now() / 1000;
         D.fine.push([t, on.reduce((s2, a) => s2 + (a.equity || 0), 0)]);
         const cut = D.eqLast || 0; while (D.fine.length && (D.fine[0][0] <= cut - 1 || D.fine.length > 400)) D.fine.shift();
       }

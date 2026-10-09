@@ -7,7 +7,18 @@ const fmt = (n) => Math.abs(Number(n) || 0).toLocaleString("en-US", { minimumFra
 const sfmt = (n) => (n > 0 ? "+" : n < 0 ? "-" : "") + fmt(n);
 const money = (n, sign) => `<span class="num ${sign ? (n > 0 ? "up-t" : n < 0 ? "down-t" : "muted") : ""}">${sign ? sfmt(n) : fmt(n)}</span>`;
 const pad = (n) => String(n).padStart(2, "0");
-const tstr = (ms) => { const d = new Date(ms); return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+// 用 MT5 券商服务器时间显示（和终端右下角一致）。clock.offset = 服务器unix − 本机unix；再用 UTC 取值，避免被浏览器的北京时区再加一层。
+const tstr = (ms) => {
+  const d = new Date((Number(ms) || Date.now()) + (ui.clockOffset || 0) * 1000);
+  return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+};
+const tclock = () => {
+  const el = $("#srvClock"); if (!el) return;
+  if (!(ui.clockOffset || ui.clockUnix)) { el.textContent = "服务器时间 —"; el.classList.remove("on"); el.title = "登录账户后显示 MT5 券商服务器时间（不是北京时间）"; return; }
+  el.textContent = `服务器时间 ${tstr(Date.now())}`;
+  el.classList.add("on");
+  el.title = ui.clockSource ? `来自「${ui.clockSource}」的 MT5 服务器时间（和终端右下角一致，不是北京时间）` : "MT5 券商服务器时间（和终端右下角一致，不是北京时间）";
+};
 const TABS = [["stats", "收益"], ["accounts", "账号"], ["trade", "交易"], ["strategy", "策略"], ["log", "日志"], ["settings", "设置"]];
 const POPUP_MS = 180000; // 首页弹出信息停留 3 分钟
 const KIND_LABEL = { buy: "市价买入", sell: "市价卖出", buy_limit: "买入限价", sell_limit: "卖出限价", buy_stop: "买入止损", sell_stop: "卖出止损" };
@@ -17,6 +28,7 @@ const ui = {
   tab: "stats",   // 首页固定是收益台
   selected: new Set(JSON.parse(localStorage.getItem("fleet.selected") || "[]")),
   search: "", group: "全部", logFail: false, statsScope: "all", busy: false,
+  clockOffset: 0, clockUnix: 0, clockSource: "",
   state: null, logs: [], hist: null, lastRender: {},
 };
 
@@ -228,12 +240,19 @@ function render() {
     $("#symList").innerHTML = syms.map((s) => `<option value="${esc(s)}">`).join("");
     $("#setList").innerHTML = st.library.filter((n) => n.toLowerCase().endsWith(".set")).map((s) => `<option value="${esc(s)}">`).join("");
   });
-  once("servers", [st.servers, accs.map((a) => a.group)], () => {
+  once("servers", [st.servers, st.groups, accs.map((a) => a.group)], () => {
     $("#serverList").innerHTML = (st.servers || []).map((s) => `<option value="${esc(s)}">`).join("");
-    const gs = [...new Set(["主仓", "跟单", "测试", ...accs.map((a) => a.group)])];
+    const gs = st.groups && st.groups.length ? st.groups : [...new Set(["主仓", "跟单", "测试", ...accs.map((a) => a.group)])];
     $("#groupList").innerHTML = gs.map((g) => `<option value="${esc(g)}">`).join("");
   });
   if (ui.prog) renderProgress();
+  if (st.clock) {
+    ui.clockOffset = Number(st.clock.offset) || 0;
+    ui.clockUnix = Number(st.clock.unix) || 0;
+    ui.clockSource = st.clock.source || "";
+  }
+  window.__fleetClock = { offset: ui.clockOffset || 0, unix: ui.clockUnix || 0, source: ui.clockSource || "" };
+  tclock();
   if (ui.tab === "settings") { renderSettingsInfo(); renderRemote(st.remote); }
   if (ui.tab === "accounts") renderAccounts();
   if (ui.tab === "trade") { if (window.Quick) Quick.onState(st); if (window.Algo) Algo.onState(st); renderTrade(); }
@@ -260,9 +279,77 @@ function filtered() {
   return ui.state.accounts.filter((a) => (ui.group === "全部" || a.group === ui.group) &&
     (!q || `${a.alias} ${a.login} ${a.server} ${a.group}`.toLowerCase().includes(q)));
 }
+
+function openGroups() {
+  const st = ui.state; if (!st) return;
+  const groups = (st.groups || []).filter((g) => g !== "未分组");
+  const sel = selIds();
+  modal({
+    title: "分组管理",
+    desc: "自定义账户分组，会同步到快捷交易面板和算法交易开关的「按分组」。分组保存在本机 data，更新程序不会丢掉。",
+    wide: true,
+    body: `
+      <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <label class="field" style="flex:1;min-width:160px"><span>新建分组</span><input class="input" id="gNew" maxlength="32" placeholder="例如 亚洲盘"></label>
+        <button class="btn primary" type="button" data-gact="create">新建</button>
+      </div>
+      <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>分组</th><th>账户数</th><th>操作</th></tr></thead><tbody id="gRows">
+        ${["未分组", ...groups].map((g) => {
+          const n = st.accounts.filter((a) => (a.group || "未分组") === g).length;
+          const locked = g === "未分组";
+          return `<tr><td><b>${esc(g)}</b>${locked ? ' <span class="small muted">系统</span>' : ""}</td><td class="num">${n}</td>
+            <td class="row">${locked ? "" : `<button class="btn sm" type="button" data-gact="rename" data-g="${esc(g)}">重命名</button><button class="btn sm danger" type="button" data-gact="del" data-g="${esc(g)}">删除</button>`}</td></tr>`;
+        }).join("")}
+      </tbody></table></div>
+      <div class="row" style="margin-top:14px;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <label class="field" style="flex:1;min-width:160px"><span>把已勾选的 ${sel.length} 个账户移入</span>
+          <select class="input" id="gMove">${["未分组", ...groups].map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("")}</select></label>
+        <button class="btn" type="button" data-gact="assign" ${sel.length ? "" : "disabled"}>移入分组</button>
+      </div>
+      <p class="small muted" style="margin:8px 0 0">也可以在编辑账户时改「分组」；快捷交易 / 算法交易开关里的「按分组」会立刻用上这些名字。</p>`,
+    actions: [{ label: "关闭" }],
+    onMount: (root) => {
+      root.addEventListener("click", async (e) => {
+        const b = e.target.closest("[data-gact]"); if (!b) return;
+        const act = b.dataset.gact;
+        try {
+          if (act === "create") {
+            const name = $("#gNew", root).value.trim();
+            const r = await api("/api/groups", { name });
+            if (!r.ok) return toast(r.message, true);
+            toast(r.message); closeModal(); await poll(); return openGroups();
+          }
+          if (act === "rename") {
+            const from = b.dataset.g;
+            const to = prompt(`把「${from}」改名为：`, from);
+            if (to == null) return;
+            const r = await api("/api/groups/rename", { from, to: to.trim() });
+            if (!r.ok) return toast(r.message, true);
+            toast(r.message); closeModal(); await poll(); return openGroups();
+          }
+          if (act === "del") {
+            const name = b.dataset.g;
+            if (!confirm(`删除分组「${name}」？里面的账户会回到「未分组」。`)) return;
+            const r = await api("/api/groups/delete", { name });
+            if (!r.ok) return toast(r.message, true);
+            toast(r.message); closeModal(); await poll(); return openGroups();
+          }
+          if (act === "assign") {
+            if (!sel.length) return toast("请先在账号页勾选账户", true);
+            const group = $("#gMove", root).value;
+            const r = await api("/api/groups/assign", { ids: sel, group });
+            if (!r.ok) return toast(r.message, true);
+            toast(r.message); closeModal(); await poll();
+          }
+        } catch (err) { toast(err.message, true); }
+      });
+    },
+  });
+}
+
 function renderAccounts() {
   const st = ui.state;
-  const groups = ["全部", ...new Set(st.accounts.map((a) => a.group))];
+  const groups = ["全部", ...((st.groups && st.groups.length) ? st.groups : [...new Set(st.accounts.map((a) => a.group))])];
   if (!groups.includes(ui.group)) ui.group = "全部";
   once("groups", [groups, ui.group], () => {
     $("#groupFilter").innerHTML = groups.map((g) => `<button class="btn ${g === ui.group ? "primary" : ""}" data-group="${esc(g)}">${esc(g)}</button>`).join("");
@@ -681,23 +768,25 @@ function renderStats() {
   const si = $("#statsScopeInfo"); if (si) si.textContent = scopeIds ? `范围：已选 ${scopeIds.length} 个账户（顶部「选择账户」修改）` : "范围：全部账户（顶部「选择账户」可只看部分账户）";
   const h = ui.hist;
   if (!h) { once("stats", 0, () => { $("#statsBody").innerHTML = `<div class="empty"><h2>还没有读取历史</h2><p>先批量登录，再点「读取平仓历史」。数据来自各终端的成交历史（history_deals_get），按平仓日汇总，含手续费和隔夜利息。</p></div>`; }); return; }
-  $("#statsInfo").textContent = `已读取 ${h.accounts} 个在线账户${h.skipped ? `，${h.skipped} 个未登录账户未计入` : ""} · ${new Date(ui.histAt).toLocaleTimeString("zh-CN", { hour12: false })}`;
+  $("#statsInfo").textContent = `已读取 ${h.accounts} 个在线账户${h.skipped ? `，${h.skipped} 个未登录账户未计入` : ""} · ${tstr(ui.histAt)}`;
   once("stats", [ui.histAt, (scopeIds || []).join(",")], () => {
     const deals = h.deals.slice().sort((a, b) => a.time - b.time);
-    const now = new Date(), dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+    // deal.time 已是 MT5 服务器时间戳；按服务器日历日切分（UTC 取位，不再用北京本地日）
+    const sn = new Date(Date.now() + (ui.clockOffset || 0) * 1000);
+    const dayStart = Date.UTC(sn.getUTCFullYear(), sn.getUTCMonth(), sn.getUTCDate()) / 1000;
+    const monthStart = Date.UTC(sn.getUTCFullYear(), sn.getUTCMonth(), 1) / 1000;
     const sum = (arr) => arr.reduce((s, d) => s + d.profit, 0);
     const today = sum(deals.filter((d) => d.time >= dayStart));
     const week = sum(deals.filter((d) => d.time >= dayStart - 6 * 86400));
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
     const month = sum(deals.filter((d) => d.time >= monthStart));
     const year = sum(deals);
     const byDay = new Map();
-    deals.forEach((d) => { const k = new Date(d.time * 1000); const key = `${k.getFullYear()}-${pad(k.getMonth() + 1)}-${pad(k.getDate())}`; byDay.set(key, (byDay.get(key) || 0) + d.profit); });
+    deals.forEach((d) => { const k = new Date(d.time * 1000); const key = `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())}`; byDay.set(key, (byDay.get(key) || 0) + d.profit); });
     const days = [...byDay.entries()].sort();
     const wins = deals.filter((d) => d.profit > 0), losses = deals.filter((d) => d.profit < 0);
     const gp = sum(wins), gl = -sum(losses);
     const best = days.reduce((m, d) => (d[1] > m[1] ? d : m), ["—", 0]), worst = days.reduce((m, d) => (d[1] < m[1] ? d : m), ["—", 0]);
-    const months = Array.from({ length: 12 }, (_, i) => sum(deals.filter((d) => new Date(d.time * 1000).getMonth() === i && new Date(d.time * 1000).getFullYear() === now.getFullYear())));
+    const months = Array.from({ length: 12 }, (_, i) => sum(deals.filter((d) => { const x = new Date(d.time * 1000); return x.getUTCMonth() === i && x.getUTCFullYear() === sn.getUTCFullYear(); })));
     const byAcc = new Map(); deals.forEach((d) => byAcc.set(d.alias, (byAcc.get(d.alias) || 0) + d.profit));
     const accRows = [...byAcc.entries()].sort((a, b) => b[1] - a[1]);
     // 曲线
@@ -795,7 +884,7 @@ function updRenderCheck() {
   if (!c) { el.innerHTML = '<p class="small muted" style="margin:0">点「检查更新」查看有没有新版本。</p>'; return; }
   if (c.loading) { el.innerHTML = '<p class="small muted" style="margin:0">正在检查…</p>'; return; }
   if (!c.ok) { el.innerHTML = `<div class="note bad">检查更新失败：${esc((c.errors || []).join("；"))}<br>可以稍后再试；如果 GitHub 一直打不开，可以在下面「更新源设置」里填一个自定义更新地址。</div>`; return; }
-  const when = c.checked_at ? new Date(c.checked_at * 1000).toLocaleTimeString("zh-CN", { hour12: false }) : "";
+  const when = c.checked_at ? tstr(c.checked_at * 1000) : "";
   const head = c.newer ? `<b class="up-t">有新版本 v${esc(c.latest)}</b>（当前 v${esc(c.current)}）` : `<b>已经是最新版本 v${esc(c.current)}</b>`;
   const meta = [c.released ? `发布：${esc(c.released)}` : "", `来源：${esc(c.source || "")}`, c.api_ms ? `响应 ${c.api_ms} ms` : "", c.size ? `更新包 ${(c.size / 1024).toFixed(0)} KB` : "", when ? `检查于 ${when}` : ""].filter(Boolean).join(" · ");
   const req = c.newer && c.requirements_changed ? '<div class="note bad" style="margin-top:8px">这个版本需要安装新的依赖（会自动用本机 Python 安装；便携版没有 pip，需下载完整便携版）。</div>' : "";
@@ -899,7 +988,7 @@ function renderSettingsInfo() {
     const si = st.serversImport;
     const pub = st.serversPublished > 0 ? `随程序发布 <b>${st.serversPublished}</b> 个服务器（含 42 及以上，更新后自动放入）。` : "";
     const tplLine = t.servers > 0 ? `模板里有 <b>${t.servers}</b> 个服务器（新建的终端会带上）。` : "";
-    $("#srvInfo").innerHTML = si ? `${pub}${tplLine}<span class="up-t">✓ 正在使用 ${st.serversLib > 0 ? st.serversLib + " 个服务器" : ""}</span>：<span class="num">${esc(si.source)}</span> · ${new Date(si.at * 1000).toLocaleString("zh-CN", { hour12: false })}`
+    $("#srvInfo").innerHTML = si ? `${pub}${tplLine}<span class="up-t">✓ 正在使用 ${st.serversLib > 0 ? st.serversLib + " 个服务器" : ""}</span>：<span class="num">${esc(si.source)}</span> · ${tstr(si.at * 1000)}`
       : `<span class="muted">${pub}${tplLine}找不到服务器时点「一键修复服务器列表」。</span>`;
   });
 }
@@ -1006,6 +1095,7 @@ document.addEventListener("click", async (e) => {
     }
     case "import": return $("#csvFile").click();
     case "example": return (location.href = `/api/accounts/example.csv?token=${encodeURIComponent(window.FLEET_TOKEN)}`);
+    case "groups": return openGroups();
     case "delete":
       if (!needSel()) return;
       return modal({ title: "删除已选账户", desc: `将从本机台账删除 ${selIds().length} 个账户（含加密保存的密码）。在线的会先断开。不会删除 MT5 文件夹。`, actions: [{ label: "取消" }, { label: "删除", tone: "danger", run: async () => { await runBatch("删除", "/api/accounts/delete", { ids: selIds() }); } }] });
@@ -1063,3 +1153,5 @@ $("#search").addEventListener("input", (e) => { ui.search = e.target.value; rend
 renderNav();
 poll().then(() => { updStartup(); if (ui.tab === "settings") fillSettings(); if (ui.tab === "log") loadLogs(); if (ui.tab === "stats") loadStats(); if (ui.state) { $("#oGroups").value = (ui.state.settings.scale_groups || []).join(","); if (ui.state.settings.default_symbol) $("#oSymbol").value = ui.state.settings.default_symbol; } });
 setInterval(() => { if (ui.tab === "log") loadLogs(); }, 3000);
+
+setInterval(() => { if (ui.state) tclock(); }, 1000);

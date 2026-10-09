@@ -8,7 +8,8 @@
   const sg = (n, d = 2) => (n > 0 ? "+" : n < 0 ? "-" : "") + nf(Math.abs(n), d);
   const cls = (n) => (n > 0 ? "q-up" : n < 0 ? "q-dn" : "");
   const pad = (n) => String(n).padStart(2, "0");
-  const hms = (ms) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+  // MT5 服务器时间（__fleetClock.offset = 服务器unix−本机unix；UTC 取位）
+  const hms = (ms) => { const off = ((window.__fleetClock && window.__fleetClock.offset) || 0) * 1000; const d = new Date((Number(ms) || Date.now()) + off); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`; };
   const LS = { accs: "fleet.quickAccs", lots: "fleet.quickLots", sym: "fleet.quickSym", mode: "fleet.quickMode", ref: "fleet.quickRef", only: "fleet.quickOnly" };
   const ACT = {
     buy: "一键开多", sell: "一键开空", pair: "一键开单", close_long: "平全部多", close_short: "平全部空",
@@ -76,8 +77,8 @@
     pop.classList.toggle("hidden", !Q.popOpen);
     if (!Q.popOpen) return;
     const list = accs(), sel = new Set(ids());
-    const groups = [...new Set(list.map((a) => a.group || "未分组"))];
-    const key = JSON.stringify(list.map((a) => [a.id, a.alias, a.login, a.group, a.link]));
+    const groups = (Q.st && Q.st.groups && Q.st.groups.length) ? Q.st.groups.slice() : [...new Set(list.map((a) => a.group || "未分组"))];
+    const key = JSON.stringify([groups, list.map((a) => [a.id, a.alias, a.login, a.group, a.link])]);
     const fl = (a) => `<span class="fl ${cls(a.floating)}">${a.link === "online" ? sg(a.floating) : "—"}</span>`;
     if (pop._k === key) {    // 账户没变：只同步勾选和浮动盈亏，不重建（保持焦点和滚动位置）
       pop.querySelectorAll("input[data-qpid]").forEach((cb) => { const v = sel.has(cb.dataset.qpid); if (cb.checked !== v) cb.checked = v; });

@@ -6,7 +6,7 @@
   const byId = (id) => document.getElementById(id);
   const h = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const pad = (n) => String(n).padStart(2, "0");
-  const hms = (ms) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+  const hms = (ms) => { const off = ((window.__fleetClock && window.__fleetClock.offset) || 0) * 1000; const d = new Date((Number(ms) || Date.now()) + off); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`; };
   const LS = "fleet.algoAccs";
   const A = { st: null, sel: new Set(), popOpen: false, built: false, busy: "", res: null };
   window.__algo = A;
@@ -44,9 +44,9 @@
     pop.classList.toggle("hidden", !A.popOpen);
     if (!A.popOpen) return;
     const list = accs(), sel = new Set(ids());
-    const groups = [...new Set(list.map((a) => a.group || "未分组"))];
+    const groups = (A.st && A.st.groups && A.st.groups.length) ? A.st.groups.slice() : [...new Set(list.map((a) => a.group || "未分组"))];
     const stTxt = (a) => { const v = algoOf(a); return v === null ? (a.link === "error" ? "出错" : "离线") : v ? "算法 开" : "算法 关"; };
-    const key = JSON.stringify(list.map((a) => [a.id, a.alias, a.login, a.group, a.link, algoOf(a)]));
+    const key = JSON.stringify([groups, list.map((a) => [a.id, a.alias, a.login, a.group, a.link, algoOf(a)])]);
     if (pop._k === key) {
       pop.querySelectorAll("input[data-alid]").forEach((cb) => { const v = sel.has(cb.dataset.alid); if (cb.checked !== v) cb.checked = v; });
       const foot = pop.querySelector(".pp-foot span"); if (foot && !foot._hint) foot.textContent = `已选 ${sel.size} / ${list.length} · 自动保存`;
