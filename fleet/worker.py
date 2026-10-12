@@ -297,6 +297,25 @@ class Worker:
         return False, f"已发送{want}命令，但终端状态没有变化（现在仍是{'开' if now else '关'}）。请在该终端窗口里手动点「算法交易」按钮", \
             {"trade_allowed": bool(now)}
 
+    def with_algo_for_trade(self, fn, params: dict):
+        """快捷 / 批量交易：若算法交易当前是关，临时打开 → 下单/平仓 → finally 再关回去。
+        不改动账户的 algo_off 记忆（用户手动关闭偏好保留）；本来就是开则不动。"""
+        was = self._algo_now()
+        turned = False
+        try:
+            if was is False:
+                ok, msg, _ = self.set_algo(True)
+                if not ok:
+                    return False, f"临时打开算法交易失败（下单/平仓需要短暂打开）：{msg}", {}
+                turned = True
+            return fn(params)
+        finally:
+            if turned:
+                ok2, msg2, _ = self.set_algo(False)
+                if not ok2:
+                    self.emit(type="log", action="算法交易", ok=False,
+                              message=f"交易后把算法交易关回去失败：{msg2}（请在该终端工具栏手动关掉）")
+
     def apply_algo_pref(self, snap: dict) -> tuple[dict, str]:
         """登录 / 重连后：用户在交易页关掉的账户保持关闭；用户点的登录或分发，没开就打开。"""
         explicit, self._explicit = self._explicit, False
@@ -1249,7 +1268,11 @@ class Worker:
             self.emit(type="result", req=req, ok=False, message="终端未登录，先批量登录再部署/停止策略")
             return
         try:
-            ok, msg, detail = fn(params)
+            # 下单/平仓等需要 terminal.trade_allowed；算法交易关着时临时打开再恢复（不改 algo_off）
+            if name in ("order", "close", "modify", "cancel_orders", "order_pair", "nuke"):
+                ok, msg, detail = self.with_algo_for_trade(fn, params)
+            else:
+                ok, msg, detail = fn(params)
         except Exception as e:
             ok, msg, detail = False, f"执行出错：{e}", {"trace": traceback.format_exc()[-800:]}
         self.emit(type="result", req=req, ok=ok, message=msg, detail=detail)

@@ -270,7 +270,7 @@ function linkBadge(a) {
 }
 function termTag(a) {
   if (a.link !== "online" || !a.terminal) return a.ownedTerminal ? `<span class="tag" title="这个终端由本程序启动">本程序启动</span>` : "";
-  return a.terminal.trade_allowed ? `<span class="tag ok" title="终端的算法交易已开启">算法交易 开</span>` : `<span class="tag warn" title="请在 MT5 工具栏打开 算法交易 按钮，否则发单会被拒绝">算法交易 关</span>`;
+  return a.terminal.trade_allowed ? `<span class="tag ok" title="终端的算法交易已开启（EA 可自动下单）">算法交易 开</span>` : `<span class="tag warn" title="算法交易已关：EA 不会自动下单；快捷交易仍可下单（会短暂打开再关回）">算法交易 关</span>`;
 }
 
 // ---------------- 账号页 ----------------

@@ -347,6 +347,10 @@ class MockMT5:
     def _validate(self, req):
         if not self._connected:
             return 10031, "no connection"
+        # 与真 MT5 一致：算法交易关闭时 OrderSend 会被拒（10027）
+        if not getattr(self, "_algo", True) and req.get("action") in (
+                TRADE_ACTION_DEAL, TRADE_ACTION_PENDING, TRADE_ACTION_REMOVE, TRADE_ACTION_SLTP):
+            return 10027, "AutoTrading disabled by client"
         sym = req.get("symbol")
         if req["action"] in (TRADE_ACTION_DEAL, TRADE_ACTION_PENDING):
             if not self._base(sym or ""):

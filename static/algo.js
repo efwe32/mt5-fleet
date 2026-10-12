@@ -127,8 +127,8 @@
     const desc = on
       ? `<div>在 <b>${live.length}</b> 个在线账户（${names}）的 MT5 里<b>打开「算法交易」</b>。打开后，这些终端里挂着的 EA 会开始自动下单。</div>`
       : `<div>在 <b>${live.length}</b> 个在线账户（${names}）的 MT5 里<b>关闭「算法交易」</b>。</div>
-         <div style="margin-top:6px">关闭后：<b>EA 停止下单，已有持仓和挂单保留，不会平仓</b>。本程序在这些账户上的下单、平仓（包括核弹级全平、自动全平）也会被 MT5 拒绝，直到重新开启。</div>
-         <div class="small muted" style="margin-top:6px">后台重连不会自动打开；只有你点「一键开启」、登录或分发时才会重新打开。</div>`;
+         <div style="margin-top:6px">关闭后：<b>EA 停止自动下单，已有持仓和挂单保留，不会平仓</b>。</div>
+         <div class="small muted" style="margin-top:6px">快捷交易面板的开仓 / 平仓 / 核弹级全平会在需要时短暂打开算法交易，做完再关回去（你的「手动关闭」偏好保留）。后台重连不会自动打开；只有你点「一键开启」、登录或分发时才会重新打开。</div>`;
     confirmBox({
       title: on ? "一键开启算法交易" : "一键关闭算法交易",
       desc: desc + `<div class="small muted" style="margin-top:6px">只操作本程序启动的终端，桌面上你自己的 MT5 不碰。每个账户会回读终端状态，确认真的变了才算成功。</div>` + (skip ? `<div class="small muted">${skip} 个未登录 / 停用的账户会记为失败。</div>` : ""),
