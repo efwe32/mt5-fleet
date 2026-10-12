@@ -57,6 +57,20 @@ w, ok = worker("algostuck", _explicit=True)
 ok2, msg, d = w.set_algo(True)
 check("按钮没反应时报失败并说明", ok and not ok2 and "状态没有变化" in msg and d["trade_allowed"] is False, msg)
 
+# 快捷交易：算法关着也能下单，做完再关回
+w, ok = worker("mock-pass", algo_off=True)
+check("准备：算法关着", ok and w._algo_now() is False)
+# 没有临时打开时 mock 会拒单
+direct = w.cmd_order({"symbol": "XAUUSD", "kind": "buy", "lots": 0.01, "scale_mode": "fixed", "auto_symbol": True, "deviation": 20, "magic": 1, "max_lots": 10})
+check("算法关着直接下单会被拒", not direct[0] and ("10027" in direct[1] or "AutoTrading" in direct[1] or "disabled" in direct[1].lower()), direct[1])
+ok, msg, d = w.with_algo_for_trade(w.cmd_order, {"symbol": "XAUUSD", "kind": "buy", "lots": 0.01, "scale_mode": "fixed", "auto_symbol": True, "deviation": 20, "magic": 1, "max_lots": 10})
+check("临时打开后能下单", ok, msg)
+check("下单后算法交易又关回", w._algo_now() is False and w.acc.get("algo_off") is True, (w._algo_now(), w.acc.get("algo_off")))
+w2, ok = worker("mock-pass")
+assert w2._algo_now() is True
+ok, msg, d = w2.with_algo_for_trade(w2.cmd_order, {"symbol": "XAUUSD", "kind": "buy", "lots": 0.01, "scale_mode": "fixed", "auto_symbol": True, "deviation": 20, "magic": 1, "max_lots": 10})
+check("本来就是开：下单成功且保持开", ok and w2._algo_now() is True, (ok, msg, w2._algo_now()))
+
 # ---- 面板接口（本机 + 手机远程口） ----
 port = 18784
 data = Path("/tmp/fleet135")
@@ -126,6 +140,24 @@ try:
     check("手机输入密码后可以一键关闭", r["ok"] == 1 and r["results"][0]["trade_allowed"] is False, r)
     r = rc.post("/api/algo", json={"ids": ["a3"], "on": True}, headers=hdr).json()
     check("手机一键开启", r["ok"] == 1 and r["results"][0]["trade_allowed"] is True, r)
+
+    # 快捷交易在算法关闭时仍可下单，并恢复关闭
+    c.post("/api/algo", json={"ids": ["a1"], "on": False})
+    time.sleep(1.2)
+    check("快捷测前算法是关", algo_of("a1") == (False, True), algo_of("a1"))
+    r = c.post("/api/quick/action", json={"action": "buy", "ids": ["a1"], "symbol": "XAUUSD", "lots": 0.01}).json()
+    check("算法关着快捷开多成功", r.get("ok") == 1, r)
+    time.sleep(1.5)
+    check("快捷开多后算法仍关且 algo_off 保留", algo_of("a1") == (False, True), algo_of("a1"))
+    c.post("/api/algo", json={"ids": ["a1"], "on": True})
+    time.sleep(1.2)
+    r = c.post("/api/quick/action", json={"action": "buy", "ids": ["a1"], "symbol": "XAUUSD", "lots": 0.01}).json()
+    check("算法开着快捷开多成功", r.get("ok") == 1, r)
+    time.sleep(1.2)
+    check("算法开着下单后仍保持开", algo_of("a1") == (True, False), algo_of("a1"))
+    # 确认文案已更新
+    js = c.get("/static/algo.js").text
+    check("关闭确认文案说明快捷交易会短暂打开", "短暂打开" in js and "也会被 MT5 拒绝" not in js)
 finally:
     proc.terminate()
     try:
