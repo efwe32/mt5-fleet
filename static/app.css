@@ -176,3 +176,6 @@ tr.off{opacity:.6}
 .alert-board>b{margin-right:4px}
 .alert-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--down);color:var(--down);background:color-mix(in srgb,var(--down) 12%,transparent);border-radius:999px;padding:2px 4px 2px 10px;font-size:13px}
 .alert-chip button{min-height:28px}
+
+.chip.lib-item{display:inline-flex;align-items:center;gap:4px;padding-right:4px}
+.chip.lib-item .btn{margin:0}

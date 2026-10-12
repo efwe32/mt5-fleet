@@ -423,6 +423,24 @@ if online:
 html3 = c.get("/").text
 check("前端有分组管理和服务器时间", "分组管理" in html3 and "srvClock" in html3 and "服务器时间" in html3)
 
+# 删除 EA 库文件
+c.post("/api/strategy/upload", files={"file": ("ToDelete.ex5", b"EX5" * 20)})
+c.post("/api/strategy/upload", files={"file": ("keep.set", b"Lots=0.01\r\n")})
+st = c.get("/api/state").json()
+check("库里有 ToDelete.ex5", "ToDelete.ex5" in st["library"], st["library"])
+# 分发后台账挂着 → 拒绝删除
+r = c.post("/api/strategy/distribute", json={"ids": qids[:1], "strategy": {"fileName": "ToDelete.ex5", "symbol": "XAUUSD", "timeframe": "M15", "magic": 91}}).json()
+check("分发 ToDelete", r.get("ok") == 1, r)
+r = c.post("/api/strategy/library/delete", json={"name": "ToDelete.ex5"}).json()
+check("运行/台账中拒绝删库", not r.get("ok") and ("台账" in r.get("message", "") or "运行" in r.get("message", "")), r)
+c.post("/api/strategy/strip", json={"ids": qids[:1]})
+r = c.post("/api/strategy/library/delete", json={"name": "ToDelete.ex5"}).json()
+check("移除后可删库", r.get("ok") and "ToDelete.ex5" not in c.get("/api/state").json()["library"], r)
+r = c.post("/api/strategy/library/delete", json={"name": "keep.set"}).json()
+check("可删未使用的 set", r.get("ok"), r)
+r = c.post("/api/strategy/library/delete", json={"name": "nope.ex5"}).json()
+check("删除不存在的文件", not r.get("ok"), r)
+
 r = c.post("/api/accounts/delete", json={"ids": qids + [cent]}).json()
 check("清理测试账户", r["removed"] == 4)
 
