@@ -709,8 +709,9 @@ function renderStrategy() {
   const st = ui.state;
   once("lib", [st.library], () => {
     const ex5 = st.library.filter((n) => n.toLowerCase().endsWith(".ex5")), sets = st.library.filter((n) => n.toLowerCase().endsWith(".set"));
+    const chip = (n, kind) => `<span class="chip lib-item"><span class="muted">${kind}</span><button type="button" class="btn ghost sm" data-lib="${esc(n)}" title="分发">${esc(n)}</button><button type="button" class="btn ghost sm danger" data-libdel="${esc(n)}" title="从 EA 库删除">删除</button></span>`;
     $("#libList").innerHTML = ex5.length || sets.length
-      ? ex5.map((n) => `<button class="btn" data-lib="${esc(n)}" title="分发这个 EA">${esc(n)}</button>`).join("") + sets.map((n) => `<span class="chip"><span class="muted">参数</span>${esc(n)}</span>`).join("")
+      ? ex5.map((n) => chip(n, "EA")).join("") + sets.map((n) => chip(n, "参数")).join("")
       : `<span class="small muted">EA 库还是空的，先上传 .ex5 文件。</span>`;
   });
   const sel = selAccounts();
@@ -1111,6 +1112,23 @@ document.addEventListener("click", async (e) => {
     const run = async () => { try { await api(`/api/accounts/${d.toggle}/toggle`, {}); poll(); } catch (er) { toast(er.message, true); } };
     if (a && a.enabled && a.link === "online") return modal({ title: `停用 ${a.alias}？`, desc: "停用会断开这个终端的连接。终端本身和里面运行的 EA 不受影响（要停 EA 请用策略页）。", actions: [{ label: "取消" }, { label: "停用", tone: "danger", run }] });
     return run();
+  }
+  if (d.libdel) {
+    const name = d.libdel;
+    return modal({
+      title: `删除策略文件「${esc(name)}」？`,
+      desc: `将从本机 <span class="num">data/ea_library</span> 删除这个文件。终端里已经复制过去的 .ex5 / .set、账户台账、桌面 MT5 都不会动。<br><br>若还有账户正在运行或台账里挂着同名策略，会拒绝删除，请先「停止 / 移除」。`,
+      actions: [
+        { label: "取消" },
+        { label: "删除", tone: "danger", run: async () => {
+          try {
+            const r = await api("/api/strategy/library/delete", { name });
+            if (!r.ok) return toast(r.message, true);
+            toast(r.message); if (ui.distFile === name) ui.distFile = ""; if (ui.distPreset === name) ui.distPreset = "";
+            ui.lastRender = {}; await poll();
+          } catch (er) { toast(er.message, true); }
+        } }],
+    });
   }
   if (d.lib) { ui.distFile = d.lib; return distForm(d.lib); }
   if (d.closeTicket) { const [a, tk] = d.closeTicket.split(":"); return closeTicket(a, tk); }

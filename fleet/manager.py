@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import os
+import re
 import multiprocessing as mp
 import queue
 import shutil
@@ -1730,6 +1731,54 @@ class Fleet:
     def library(self):
         lib = self.store.data_dir / "ea_library"
         return sorted(p.name for p in lib.iterdir() if p.suffix.lower() in (".ex5", ".set")) if lib.exists() else []
+
+    def delete_library(self, name: str) -> dict:
+        """删除 EA 库里的本机副本（data/ea_library）。不碰 terminals、桌面 MT5。
+        若还有账户台账挂着同名 EA（或仍在用这个 .set），先拒绝，避免误删正在用的文件。"""
+        name = os.path.basename(str(name or "").strip())
+        if not name or not re.fullmatch(r'[^\\/:*?"<>|]+\.(ex5|set)', name, re.I):
+            return {"ok": False, "message": "文件名不对"}
+        lib = self.store.data_dir / "ea_library"
+        path = lib / name
+        if not path.is_file() or path.resolve().parent != lib.resolve():
+            return {"ok": False, "message": f"EA 库里没有「{name}」"}
+        low = name.lower()
+        using, running = [], []
+        for a in self.store.accounts:
+            for s in a.get("strategies") or []:
+                if low.endswith(".ex5") and (s.get("fileName") or "").lower() == low:
+                    using.append(a)
+                    if s.get("running"):
+                        running.append(a)
+                if low.endswith(".set") and (s.get("preset") or "").lower() == low:
+                    using.append(a)
+                    if s.get("running"):
+                        running.append(a)
+        # 去重
+        seen, uniq = set(), []
+        for a in using:
+            if a["id"] not in seen:
+                seen.add(a["id"]); uniq.append(a)
+        using = uniq
+        seen, run_u = set(), []
+        for a in running:
+            if a["id"] not in seen:
+                seen.add(a["id"]); run_u.append(a)
+        running = run_u
+        if running:
+            names = "、".join((a.get("alias") or a.get("login") or a["id"]) for a in running[:5])
+            more = f" 等 {len(running)} 个" if len(running) > 5 else ""
+            return {"ok": False, "message": f"「{name}」还在 {names}{more} 的图表上运行。请先停止或「移除」这些账户上的策略，再删除库文件。"}
+        if using:
+            names = "、".join((a.get("alias") or a.get("login") or a["id"]) for a in using[:5])
+            more = f" 等 {len(using)} 个" if len(using) > 5 else ""
+            return {"ok": False, "message": f"还有 {len(using)} 个账户台账里挂着「{name}」（{names}{more}）。请先在策略页「移除」或「一键移除」，再删除库文件。不会动终端里已复制的文件。"}
+        try:
+            path.unlink()
+        except OSError as e:
+            return {"ok": False, "message": f"删除失败：{e}"}
+        self.log("", "删除策略文件", True, f"已从 EA 库删除 {name}", "本机")
+        return {"ok": True, "message": f"已从 EA 库删除「{name}」（终端里已复制的文件和桌面 MT5 都没动）", "name": name}
 
     def shutdown(self):
         with self.lock:

@@ -460,6 +460,11 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
         fleet.log("", "上传策略文件", True, f"{name}（{len(data)} 字节）已存入 EA 库", "本机")
         return {"name": name, "size": len(data)}
 
+    @app.post("/api/strategy/library/delete")
+    def library_delete(body: dict):
+        """删除 EA 库里的 .ex5 / .set（本机 data/ea_library）。台账仍挂着或正在运行时拒绝。"""
+        return fleet.delete_library(str(body.get("name") or ""))
+
     @app.post("/api/strategy/deploy")
     def deploy(body: dict):
         s = body.get("strategy") or {}
