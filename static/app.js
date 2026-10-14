@@ -201,7 +201,8 @@ function applyLive() {
 function once(key, value, fn) {
   const s = JSON.stringify(value);
   if (ui.lastRender[key] === s) return;
-  ui.lastRender[key] = s; fn();
+  fn();
+  ui.lastRender[key] = s;   // 成功后再记下，避免渲染抛错后永远不重试（经典统计曾因此空白）
 }
 
 function render() {
@@ -821,7 +822,7 @@ function renderStats() {
   if (!h) { once("stats", 0, () => { $("#statsBody").innerHTML = `<div class="empty"><h2>还没有读取历史</h2><p>先批量登录，再点「读取平仓历史」。数据来自各终端的成交历史（history_deals_get），按平仓日汇总，含手续费和隔夜利息。</p></div>`; }); return; }
   $("#statsInfo").textContent = `已读取 ${h.accounts} 个在线账户${h.skipped ? `，${h.skipped} 个未登录账户未计入` : ""} · ${tstr(ui.histAt)}`;
   once("stats", [ui.histAt, (scopeIds || []).join(",")], () => {
-    const deals = h.deals.slice().sort((a, b) => a.time - b.time);
+    const deals = h.deals.filter((d) => !scopeIds || scopeIds.includes(d.accountId)).slice().sort((a, b) => a.time - b.time);
     // deal.time 已是 MT5 服务器时间戳；按服务器日历日切分（UTC 取位，不再用北京本地日）
     const sn = new Date(Date.now() + (ui.clockOffset || 0) * 1000);
     const dayStart = Date.UTC(sn.getUTCFullYear(), sn.getUTCMonth(), sn.getUTCDate()) / 1000;
@@ -857,7 +858,7 @@ function renderStats() {
     const floats = (ui.state.accounts.filter((a) => a.link === "online" && (!scopeIds || scopeIds.includes(a.id))));
     $("#statsBody").innerHTML = `
       <div class="grid4"><div class="stat"><div class="k">今日已实现</div><div class="v">${money(today, true)}</div></div><div class="stat"><div class="k">近 7 日</div><div class="v">${money(week, true)}</div></div>
-      <div class="stat"><div class="k">本月</div><div class="v">${money(month, true)}</div></div><div class="stat"><div class="k">${now.getFullYear()} 年</div><div class="v">${money(year, true)}</div></div></div>
+      <div class="stat"><div class="k">本月</div><div class="v">${money(month, true)}</div></div><div class="stat"><div class="k">${sn.getUTCFullYear()} 年</div><div class="v">${money(year, true)}</div></div></div>
       <div class="panel"><h3>累计已实现收益曲线（按日）</h3><div style="margin-top:8px">${svg}</div></div>
       <div class="grid2">
         <div class="panel"><h3>1–12 月</h3><div class="bars">${months.map((v, i) => `<div class="b" title="${i + 1} 月 ${sfmt(v)}"><span class="num ${v > 0 ? "up-t" : v < 0 ? "down-t" : ""}" style="font-size:10px">${v ? Math.round(v) : ""}</span><i style="height:${(Math.abs(v) / mMax) * 100}%;background:${v >= 0 ? "var(--up)" : "var(--down)"}"></i>${i + 1}</div>`).join("")}</div></div>

@@ -77,6 +77,27 @@ details.adv[open]>summary{border-bottom:1px solid var(--line)}
 details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
 @media (max-width:1100px){.qp-wrap{grid-template-columns:1fr}.qp{max-width:560px}}
 @media (max-width:560px){.qp{padding:12px 10px}.qb{font-size:17px;min-height:52px}.qp .pd-pop{width:calc(100vw - 32px)}.qp-head{flex-wrap:wrap}.qp .pd-pick{width:100%}.qp .pd-pickbtn{width:100%;max-width:none;text-align:left}.qp .pd-pop{left:0;right:auto}}
+/* 交易页：选中账户持仓列表（快捷交易同一套选择） */
+.q-pospanel{margin-bottom:16px;max-width:1100px;background:#000;border:1px solid #2c2c2c;border-radius:8px;padding:12px 14px;color:#e8e8e8;
+  --pd-line:#2c2c2c;--line:#2a2a2a;--muted:#9a9a9a;--fg:#f2f2f2}
+.q-pospanel h2{margin:0;font-size:15px;font-weight:600;color:#fff}
+.q-poshead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.q-pospanel .muted,.q-pospanel .small.muted{color:#9a9a9a}
+.q-pos-tw{overflow:auto;max-height:420px;-webkit-overflow-scrolling:touch}
+.q-pos-t{width:100%;border-collapse:collapse;font-size:13px;color:#e8e8e8}
+.q-pos-t th{position:sticky;top:0;background:#0a0a0a;color:#8c8c8c;font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid #2a2a2a;white-space:nowrap;z-index:1}
+.q-pos-t td{padding:6px 8px;border-bottom:1px solid #191919;vertical-align:middle;white-space:nowrap}
+.q-pos-cmt{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-px{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:1px solid #6e1010;border-radius:4px;background:#4a0000;color:#ff6b6b;font:700 18px/1 sans-serif;cursor:pointer}
+.q-px:hover:not(:disabled){background:#5e0000;color:#ff8d8d;border-color:#a31a1a}
+.q-px:disabled{opacity:.45;cursor:not-allowed}
+@media (max-width:760px){
+  .q-pospanel{padding:12px 10px}
+  .q-pos-t{font-size:12px}
+  .q-pos-t th,.q-pos-t td{padding:8px 5px}
+  .q-px{width:40px;height:40px;font-size:22px}
+  .q-pos-cmt{max-width:80px}
+}
 /* 算法交易开关：和上面的快捷交易面板同一套黑底（选择账户弹层默认是收益页的白底，这里必须盖掉） */
 .al-panel{margin-bottom:16px;max-width:1100px;background:#000;border:1px solid #2c2c2c;color:#f2f2f2;
   --pd-line:#2c2c2c;--pd-line2:#222;--pd-ink:#f2f2f2;--pd-mut:#9a9a9a;--pd-faint:#6c6c6c;--pd-g:#33e07a;

@@ -56,6 +56,12 @@
       const b = e.target.closest("button[data-q]"); if (b) return onAction(b.dataset.q);
       if (e.target.closest("#qArm")) return onArm();
     });
+    const posPanel = byId("qPosPanel");
+    if (posPanel) posPanel.addEventListener("click", (e) => {
+      const x = e.target.closest("button[data-qclose]"); if (!x) return;
+      const [accId, ticket] = String(x.dataset.qclose || "").split(":");
+      if (accId && ticket) askCloseOne(accId, ticket);
+    });
     initPick();
   }
 
@@ -189,6 +195,68 @@
       : (s && s.autoLast ? `自动全平：已于 ${hms(s.autoLast.at)} 触发（${sg(s.autoLast.net)}），成功 ${s.autoLast.ok} / 失败 ${s.autoLast.fail}` : "自动全平：未启用");
     set("qStatus", `状态: 在线 ${online}/${sel.length} | ${last ? `上次 ${h(last.title)} ${h(last.symbol || "")} 成功 ${last.ok} / 失败 ${last.fail}（${hms(last.at)}）` : "还没有操作"} | ${autoTxt}`);
     renderSide();
+    renderPosList();
+  }
+  function renderPosList() {
+    const el = byId("qPosList"), info = byId("qPosInfo"); if (!el) return;
+    const sel = selAccs();
+    const rows = [];
+    sel.forEach((a) => { (a.positions || []).forEach((p) => rows.push({ a, p })); });
+    rows.sort((x, y) => (y.p.profit || 0) - (x.p.profit || 0) || String(x.a.alias || "").localeCompare(String(y.a.alias || "")));
+    if (info) info.textContent = !sel.length ? "先点上方「选择账户」" : `已选 ${sel.length} 个账户 · ${rows.length} 笔持仓 · 点 × 平掉这一笔`;
+    if (!sel.length) {
+      el.innerHTML = `<p class="small muted" style="margin:0">先点上方「选择账户」勾选要看的账户。</p>`;
+      return;
+    }
+    if (!rows.length) {
+      const online = sel.filter((a) => a.link === "online").length;
+      el.innerHTML = `<p class="small muted" style="margin:0">${online ? "所选在线账户当前没有持仓。" : "所选账户都不在线：先在账号页登录。"}</p>`;
+      return;
+    }
+    el.innerHTML = `<div class="q-tw q-pos-tw"><table class="q-pos-t"><thead><tr>
+      <th>账户</th><th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>现价</th><th>浮盈</th><th>魔术号</th><th>备注</th><th></th>
+    </tr></thead><tbody>
+    ${rows.map(({ a, p }) => {
+      const side = p.side === "buy" ? "多" : "空";
+      const sc = p.side === "buy" ? "q-up" : "q-dn";
+      const pl = Number(p.profit) || 0;
+      const busy = Q.busy === "close_one";
+      return `<tr data-pos="${h(a.id)}:${h(p.ticket)}">
+        <td>${h(a.alias || a.login)}<div class="q-sm q-note">${h(a.login)}</div></td>
+        <td>${h(p.symbol)}</td>
+        <td class="${sc}">${side}</td>
+        <td class="q-num">${nf(p.volume)}</td>
+        <td class="q-num">${p.openPrice}</td>
+        <td class="q-num">${p.price}</td>
+        <td class="q-num ${cls(pl)}">${sg(pl)}</td>
+        <td class="q-num">${p.magic == null ? "—" : p.magic}</td>
+        <td class="q-note q-pos-cmt" title="${h(p.comment || "")}">${h(p.comment || "—")}</td>
+        <td><button type="button" class="q-px" data-qclose="${h(a.id)}:${h(p.ticket)}" title="平掉这一笔" aria-label="平仓" ${busy ? "disabled" : ""}>×</button></td>
+      </tr>`;
+    }).join("")}
+    </tbody></table></div>`;
+  }
+  function askCloseOne(accId, ticket) {
+    const a = (Q.st && Q.st.accounts || []).find((x) => x.id === accId);
+    const p = a && (a.positions || []).find((x) => String(x.ticket) === String(ticket));
+    if (!a || !p) return toast("这笔持仓已经不在了，刷新后再试", true);
+    const side = p.side === "buy" ? "多" : "空";
+    const go = async () => {
+      if (Q.busy) return toast("上一次操作还在执行", true);
+      Q.busy = "close_one"; renderAll();
+      try {
+        const r = await api("/api/trade/close", { ids: [accId], filter: { mode: "ticket", ticket: Number(ticket) } });
+        Q.res = { ...r, title: r.title || `平仓 #${ticket}`, at: Date.now(), ms: r.ms || 0, results: r.results || [] };
+        const bad = (r.results || []).filter((x) => !x.ok);
+        bad.length ? toast(`平仓失败：${bad[0].message}`, true) : toast(`已平 #${ticket}`);
+      } catch (e) { toast(e.message, true); }
+      finally { Q.busy = ""; renderAll(); if (typeof poll === "function") poll(); }
+    };
+    confirmBox({
+      title: `平仓 #${ticket}？`,
+      desc: `<div>${h(a.alias)} · <b>${h(p.symbol)}</b> ${side} ${nf(p.volume)} 手，开仓 ${p.openPrice}，现价 ${p.price}，浮盈 <b class="${cls(p.profit)}">${sg(p.profit)}</b>。</div><div class="small muted" style="margin-top:6px">只平这一笔。若算法交易是关的，会短暂打开再关回。</div>`,
+      label: "确认平仓", tone: "danger", run: () => { go(); },
+    });
   }
   function renderRes() {
     const sel = selAccs(), s = Q.sum;
@@ -312,7 +380,7 @@
     onState(st) {
       Q.st = st; build();
       renderPick();
-      if (!Q.sum) renderAll(); else renderSide();
+      if (!Q.sum) renderAll(); else { renderSide(); renderPosList(); }
     },
     start() { if (Q.active) return; Q.active = true; refresh(); },
     stop() { Q.active = false; clearTimeout(Q.timer); Q.popOpen = false; },
