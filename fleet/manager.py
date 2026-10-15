@@ -25,6 +25,7 @@ from . import alerts
 from .remote import RemoteGate
 from . import quote as fx
 from .worker import worker_main
+from . import lock_cool
 
 CTX = mp.get_context("spawn")
 EQ_STEP = 5            # 净值采样间隔（秒）
@@ -219,6 +220,7 @@ class Fleet:
                     self._diff_positions(acc_id, rt.get("snapshot"), ev["snapshot"])
                     rt["snapshot"], rt["ts"] = ev["snapshot"], ev.get("ts", time.time())
                     self._remember(acc_id, ev["snapshot"])
+                    self._sync_lock_cooldown(acc_id, ev["snapshot"])
                     if rt.get("link") == "online":
                         self._pending_alert = self._apply_alerts_locked()
                         stime = int((ev["snapshot"] or {}).get("server_time") or 0)
@@ -281,6 +283,62 @@ class Fleet:
         if time.time() - self._last_persist > 30:
             self._last_persist = time.time()
             self.store.save_accounts()
+
+    def _sync_lock_cooldown(self, acc_id: str, snap: dict):
+        """根据持仓维护锁单冷却；新进冷却时关掉算法交易并记住 algo_off。"""
+        a = self.store.get(acc_id)
+        if not a:
+            return
+        pos = (snap or {}).get("positions") or []
+        changed, note = lock_cool.sync(a, pos)
+        if note:
+            self.log(acc_id, "锁单冷却", True, note)
+            self._event(acc_id, "op", note, True)
+        if changed and a.get("lock_cooldown"):
+            # 冷却中禁止 EA 自动加仓：记下 algo_off，并尽量关掉终端算法交易
+            if not a.get("algo_off"):
+                a["algo_off"] = True
+                changed = True
+            # 异步关算法（不阻塞事件线程）
+            if self._alive(acc_id) and ((snap.get("terminal") or {}).get("trade_allowed")):
+                threading.Thread(target=self._cooldown_algo_off, args=(acc_id,), daemon=True).start()
+        if changed:
+            self.store.save_accounts()
+            self.account_changed(acc_id)
+
+    def _cooldown_algo_off(self, acc_id: str):
+        try:
+            self.run_batch("锁单冷却·关算法", "algo", [acc_id], {"on": False}, 20, banner=False)
+        except Exception as e:
+            print(f"[锁单冷却] 关闭算法交易失败 {acc_id}: {e}")
+
+    def open_blocked(self, acc_id: str) -> str | None:
+        """若该账户处于锁单冷却，返回中文拒绝原因；否则 None。"""
+        a = self.store.get(acc_id)
+        if not a or not a.get("lock_cooldown"):
+            return None
+        return lock_cool.cooldown_message(a)
+
+    def _reject_cooldown(self, ids: list[str], title: str) -> dict | None:
+        """若 ids 里有冷却账户，整批评掉开仓类操作（返回 summary）；全无则 None。"""
+        blocked = []
+        for i in ids:
+            msg = self.open_blocked(i)
+            if msg:
+                a = self.store.get(i) or {}
+                blocked.append({"id": i, "alias": a.get("alias") or i, "ok": False, "message": msg, "detail": None})
+        if not blocked:
+            return None
+        # 只挡冷却账户：若有混合，仍整批拒绝开仓以免部分成交
+        res = {}
+        for i in ids:
+            msg = self.open_blocked(i)
+            a = self.store.get(i) or {}
+            if msg:
+                res[i] = {"ok": False, "message": msg}
+            else:
+                res[i] = {"ok": False, "message": f"同批有账户处于锁单冷却，整批开仓已取消（{blocked[0]['alias']}）"}
+        return self._summary(title, res)
 
     # ---------------- 收益台：活动流 / 净值采样 / 平仓缓存 ----------------
     def _event(self, acc_id, kind, text, ok=True, alias=None):
@@ -821,7 +879,8 @@ class Fleet:
 
     def login(self, ids: list[str], title: str = "批量登录"):
         self._prog_begin(title, ids, LOGIN_STEPS)
-        self._clear_algo_off(ids)      # 用户点的登录：算法交易恢复成开
+        # 用户点的登录：算法交易恢复成开（锁单冷却中的账户除外，保持关，避免 EA 清掉停建仓标志）
+        self._clear_algo_off([i for i in ids if not self.open_blocked(i)])
         try:
             results = self._login_ids(ids, explicit=True)
         finally:
@@ -948,9 +1007,11 @@ class Fleet:
                 warn = "已停用"
             elif not online:
                 warn = "未登录，会记为失败"
+            elif a.get("lock_cooldown"):
+                warn = lock_cool.cooldown_message(a)
             elif lots > float(s.get("max_lots") or 0) > 0:
                 warn = f"超过单笔上限 {s['max_lots']}，会被拦截"
-            if online and a["enabled"] and not (lots > float(s.get("max_lots") or 0) > 0):
+            if online and a["enabled"] and not a.get("lock_cooldown") and not (lots > float(s.get("max_lots") or 0) > 0):
                 total += lots
             rows.append({"id": i, "alias": a["alias"], "group": a["group"], "equity": eq, "factor": round(f, 4),
                          "lots": lots, "online": online, "warn": warn})
@@ -959,6 +1020,9 @@ class Fleet:
                 "blocked": total > float(s.get("max_total_lots") or 1e9)}
 
     def order(self, ids: list[str], p: dict):
+        rej = self._reject_cooldown(ids, "批量下单")
+        if rej:
+            return rej
         pv = self.preview_order(ids, p)
         if pv["blocked"]:
             res = {i: {"ok": False, "message": f"合计手数 {pv['total']} 超过批量上限 {pv['max_total_lots']}，整批拦截"} for i in ids}
@@ -1095,6 +1159,12 @@ class Fleet:
         sym = str(p.get("symbol") or "")
         t0 = time.time()
         if cmd in ("order", "order_pair"):
+            rej = self._reject_cooldown(ids, f"快捷·{title}")
+            if rej:
+                rej["title"] = title
+                rej["ms"] = int((time.time() - t0) * 1000)
+                self._quick_remember(action, title, sym, rej)
+                return rej
             op = {"symbol": sym, "lots": float(p["lots"]), "scale_mode": p.get("scale_mode") or "fixed",
                   "ref_equity": float(p.get("ref_equity") or 0), "scale_groups": []}
             pv = self.preview_order(ids, op)
@@ -1257,8 +1327,11 @@ class Fleet:
     def deploy(self, ids: list[str], s: dict):
         """单个策略「启动」用：部署到指定账户（不替换同名 EA）。"""
         title = "部署策略"
+        rej = self._reject_cooldown(ids, title)
+        if rej:
+            return rej
         self._prog_begin(title, ids, DIST_STEPS)
-        self._clear_algo_off(ids)
+        self._clear_algo_off([i for i in ids if not self.open_blocked(i)])
         try:
             for i in ids:
                 self._prog_step(i, "login", "ok", "已在线" if self.runtime.get(i, {}).get("link") == "online" else "")
@@ -1280,7 +1353,18 @@ class Fleet:
         results: dict = {}
         per: dict = {}
         replace = bool(opts.get("replace", True))
-        self._clear_algo_off(ids)      # 分发是用户点的：EA 要跑，算法交易恢复成开
+        # 锁单冷却中的账户：不分发（会重新挂 EA / 开算法，容易解开停建仓标志继续加仓）
+        cool_ids = [i for i in ids if self.open_blocked(i)]
+        if cool_ids:
+            for i in cool_ids:
+                a = self.store.get(i) or {}
+                results[i] = {"ok": False, "message": self.open_blocked(i)}
+                self._prog_finish(i, False, results[i]["message"])
+            ids = [i for i in ids if i not in set(cool_ids)]
+            if not ids:
+                self._prog_end()
+                return self._summary(title, results)
+        self._clear_algo_off([i for i in ids if not self.open_blocked(i)])  # 分发：EA 要跑，算法恢复成开（冷却账户除外）
         try:
             need = []
             for i in ids:
@@ -1402,17 +1486,43 @@ class Fleet:
         changed = False
         for i in ids:
             a = self.store.get(i)
-            if a and a.get("algo_off"):
-                a["algo_off"] = False
-                changed = True
-                self.account_changed(i)
+            if not a or not a.get("algo_off"):
+                continue
+            if a.get("lock_cooldown"):
+                continue  # 锁单冷却：保持算法关着
+            a["algo_off"] = False
+            changed = True
+            self.account_changed(i)
         if changed:
             self.store.save_accounts()
 
     def set_algo(self, ids: list[str], on: bool) -> dict:
         """在所选账户（本程序启动的终端）里打开 / 关闭「算法交易」按钮，并按终端回读的状态报告结果。"""
         title = "一键开启算法交易" if on else "一键关闭算法交易"
-        out = self.run_batch(title, "algo", ids, {"on": bool(on)}, 30, banner=False)
+        if on:
+            # 冷却中禁止开算法：否则 EA 会清掉「锁仓停建仓」继续加仓
+            allow, blocked = [], {}
+            for i in ids:
+                msg = self.open_blocked(i)
+                if msg:
+                    a = self.store.get(i) or {}
+                    blocked[i] = {"ok": False, "message": msg + "（冷却中不能开算法交易）"}
+                else:
+                    allow.append(i)
+            if not allow:
+                out = self._summary(title, blocked, banner=False)
+                out["title"], out["on"] = title, True
+                return out
+            out = self.run_batch(title, "algo", allow, {"on": True}, 30, banner=False)
+            # 合并被拒账户
+            by_id = {r["id"]: r for r in out["results"]}
+            for i, r in blocked.items():
+                by_id[i] = {"id": i, "alias": (self.store.get(i) or {}).get("alias") or i, **r}
+            out["results"] = [by_id[i] for i in ids if i in by_id]
+            out["ok"] = sum(1 for r in out["results"] if r.get("ok"))
+            out["fail"] = len(out["results"]) - out["ok"]
+        else:
+            out = self.run_batch(title, "algo", ids, {"on": False}, 30, banner=False)
         changed = False
         for r in out["results"]:
             a = self.store.get(r["id"])
@@ -1694,6 +1804,7 @@ class Fleet:
                 last = a.get("last") or {}
                 acc = (snap or {}).get("account") or {}
                 d = self.store.public(a)
+                d.update(lock_cool.public_fields(a))
                 d.update({
                     "link": link, "linkError": rt.get("linkError", ""),
                     "balance": acc.get("balance", last.get("balance", 0)),

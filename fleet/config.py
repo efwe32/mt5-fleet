@@ -141,6 +141,10 @@ class Store:
             "strategies": list(a.get("strategies") or []),
             "last": dict(a.get("last") or {}),
             "algo_off": bool(a.get("algo_off")),   # 用户在交易页手动关掉了算法交易：后台重连不再自动打开
+            # 锁单冷却：同品种多空对锁后禁止新开仓，直到清仓；跨重启持久化
+            "lock_cooldown": bool(a.get("lock_cooldown")),
+            "lock_cooldown_at": int(a.get("lock_cooldown_at") or 0),
+            "lock_symbols": [str(x) for x in (a.get("lock_symbols") or []) if str(x).strip()],
         }
 
     def get(self, acc_id: str) -> dict | None:
