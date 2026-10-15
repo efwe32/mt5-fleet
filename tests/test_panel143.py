@@ -50,7 +50,7 @@ check("清仓解除冷却", ch and not a2["lock_cooldown"] and a2["lock_symbols"
 
 # 持久化字段在 _normalize
 from fleet.config import Store
-check("版本 1.4.3", __version__ == "1.4.3", __version__)
+check("版本 1.4.4", __version__ == "1.4.4", __version__)
 
 js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
 qj = (ROOT / "static" / "quick.js").read_text(encoding="utf-8")
@@ -83,7 +83,7 @@ try:
     if not token:
         raise SystemExit(1)
     c = httpx.Client(base_url=f"http://127.0.0.1:{port}", headers={"X-Fleet-Token": token}, timeout=120)
-    check("ping 版本", c.get("/ping").json().get("version") == "1.4.3")
+    check("ping 版本", c.get("/ping").json().get("version") == "1.4.4")
     st = c.get("/api/state").json()
     ids = [a["id"] for a in st["accounts"]]
     r = c.post("/api/login", json={"ids": ids[:2]}).json()
