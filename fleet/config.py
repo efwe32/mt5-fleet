@@ -86,10 +86,18 @@ class Store:
         self.first_launch = not self.settings_path.exists()
         self.settings = {**DEFAULT_SETTINGS, **self._read(self.settings_path, {})}
         self.settings.pop("alert_loss", None)  # v1.4.5 已取消浮亏警报
+        # v1.4.7：账户上的锁单冷却字段在 normalize 时已不再写入；旧台账里残留的会在下次 save 清掉
         self.settings.pop("terminal_root", None)
         self.settings.pop("dry_run", None)   # 旧版本的 dry_run 开关已取消：所有操作都直接实盘发送
-        self.accounts: list[dict] = [self._normalize(a) for a in self._read(self.accounts_path, {"accounts": []}).get("accounts", [])]
+        raw_accs = self._read(self.accounts_path, {"accounts": []}).get("accounts", [])
+        self.accounts: list[dict] = [self._normalize(a) for a in raw_accs]
         self.save_settings()
+        # v1.4.7：启动时清掉旧版锁单冷却字段（normalize 已不保留；立刻写回磁盘避免残留）
+        if any(
+            ("lock_cooldown" in a) or ("lock_cooldown_at" in a) or ("lock_symbols" in a)
+            for a in raw_accs
+        ):
+            self.save_accounts()
 
     # ---------- io ----------
     @staticmethod
@@ -121,6 +129,10 @@ class Store:
 
     def save_accounts(self):
         with self._lock:
+            for a in self.accounts:
+                a.pop("lock_cooldown", None)
+                a.pop("lock_cooldown_at", None)
+                a.pop("lock_symbols", None)
             self._write(self.accounts_path, {"version": 1, "accounts": self.accounts})
 
     # ---------- accounts ----------
@@ -141,10 +153,6 @@ class Store:
             "strategies": list(a.get("strategies") or []),
             "last": dict(a.get("last") or {}),
             "algo_off": bool(a.get("algo_off")),   # 用户在交易页手动关掉了算法交易：后台重连不再自动打开
-            # 锁单冷却：同品种多空对锁后禁止新开仓，直到清仓；跨重启持久化
-            "lock_cooldown": bool(a.get("lock_cooldown")),
-            "lock_cooldown_at": int(a.get("lock_cooldown_at") or 0),
-            "lock_symbols": [str(x) for x in (a.get("lock_symbols") or []) if str(x).strip()],
         }
 
     def get(self, acc_id: str) -> dict | None:
