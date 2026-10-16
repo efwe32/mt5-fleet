@@ -233,14 +233,8 @@ function linkBadge(a) {
   return `<span class="small muted" style="display:inline-flex;gap:8px;align-items:center"${tip}><span class="dot ${m[1]}"></span><span class="${m[2]}">${m[0]}</span></span>`;
 }
 function termTag(a) {
-  const cool = a.lockCooldown
-    ? `<span class="tag warn" title="${esc(a.lockCooldownMsg || "有锁单禁止新开仓，清仓后自动恢复")}">冷却中</span> `
-    : "";
-  if (a.link !== "online" || !a.terminal) return cool + (a.ownedTerminal ? `<span class="tag" title="这个终端由本程序启动">本程序启动</span>` : "");
-  const algo = a.terminal.trade_allowed
-    ? `<span class="tag ok" title="终端的算法交易已开启（EA 可自动下单）">算法交易 开</span>`
-    : `<span class="tag warn" title="算法交易已关：EA 不会自动下单；快捷交易仍可下单（会短暂打开再关回）">算法交易 关</span>`;
-  return cool + algo;
+  if (a.link !== "online" || !a.terminal) return a.ownedTerminal ? `<span class="tag" title="这个终端由本程序启动">本程序启动</span>` : "";
+  return a.terminal.trade_allowed ? `<span class="tag ok" title="终端的算法交易已开启（EA 可自动下单）">算法交易 开</span>` : `<span class="tag warn" title="算法交易已关：EA 不会自动下单；快捷交易仍可下单（会短暂打开再关回）">算法交易 关</span>`;
 }
 
 // ---------------- 账号页 ----------------
@@ -377,7 +371,7 @@ function renderAccounts() {
   const list = filtered();
   list.forEach((a) => { ui.live[a.id + ":bal"] = money(a.balance); ui.live[a.id + ":eq"] = money(a.equity); ui.live[a.id + ":fl"] = money(a.floating, true); ui.live[a.id + ":pos"] = String(a.positionsCount); });
   const view = list.map((a) => [a.id, a.alias, a.login, a.server, a.group, a.enabled, a.link, a.linkError,
-    a.strategies.map((s) => s.running), a.terminal?.trade_allowed, a.ownedTerminal, a.has_password, ui.selected.has(a.id), a.terminal_path, a.lot_multiplier, a.symbol_suffix, a.lockCooldown, a.lockSymbols]);
+    a.strategies.map((s) => s.running), a.terminal?.trade_allowed, a.ownedTerminal, a.has_password, ui.selected.has(a.id), a.terminal_path, a.lot_multiplier, a.symbol_suffix]);
   once("acc", [view, ui.search, ui.group], () => {
     if (!list.length) {
       $("#accList").innerHTML = `<div class="empty"><h2>${st.accounts.length ? "没有匹配的账户" : "还没有账户"}</h2><p>${st.accounts.length ? "换个关键词，或点「添加并登录」。" : "点「添加并登录」，填账号、交易密码、服务器即可：程序会自动复制一份独立的 MT5、启动、登录并打开算法交易。也可以一次粘贴多个账户。"}</p><div class="row"><button class="btn primary" data-act="quick">添加并登录</button></div></div>`;
@@ -574,14 +568,6 @@ function renderTrade() {
     return;
   }
   ui.lastRender.tradeEmpty = null;
-  const cool = sel.filter((a) => a.lockCooldown);
-  once("tradeCool", cool.map((a) => [a.id, a.lockSymbols]), () => {
-    const box = $("#tradeCool");
-    if (!box) return;
-    box.innerHTML = cool.length
-      ? `<div class="warnbar">${esc(cool[0].lockCooldownMsg || "冷却中：有锁单禁止新开仓，清仓后自动恢复")}${cool.length > 1 ? `（${cool.length} 个已选账户）` : ""} · 平仓仍可用</div>`
-      : "";
-  });
   const syms = [...new Set([...ui.state.symbols, ...sel.flatMap((a) => a.positions.map((p) => p.symbol))])];
   once("tradeSyms", syms, () => {
     const keep = $("#cSymbol").value, keep2 = $("#mScope").value;

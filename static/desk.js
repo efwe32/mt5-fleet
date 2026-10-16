@@ -220,7 +220,7 @@
   function resetScope() {
     D.gen++; D.seq = 0; D.eqLast = 0; D.dealsV = -1; D.deals = {}; D.aggKey = ""; D.agg = null; D.events = []; D.equity = []; D.fine = [];
     D.logInit = false; D.avKey = ""; D.chordKey = ""; D.sats = {}; D.lit = {}; D.lastFloat = {}; D.reveal = 0; D.ridgeDisp = null;
-    ["liveEq", "hLo", "hHi", "bal", "pnl", "from", "fl", "pct"].forEach((k) => { delete D.tw[k]; });
+    ["liveEq", "hLo", "hHi", "bal", "pnl", "from", "fl", "flWin", "flLoss", "pct"].forEach((k) => { delete D.tw[k]; });
     const rows = $("pdRows"); if (rows) rows.innerHTML = "";
     const top = $("pdTop"); if (top) { top.innerHTML = ""; top.style.background = ""; }
     D.inflight = false;
@@ -426,9 +426,15 @@
   function updateTexts(now) {
     const st = D.st; if (!st) return;
     const sc = scopeAccs(), agg = computeAgg();
-    let eq = 0, bal = 0, fl = 0, on = 0, err = 0, pos = 0, ea = 0, eaRun = 0; const syms = new Set();
+    let eq = 0, bal = 0, fl = 0, flWin = 0, flLoss = 0, on = 0, err = 0, pos = 0, ea = 0, eaRun = 0; const syms = new Set();
     sc.forEach((a) => {
-      if (a.link === "online") { on++; eq += a.equity || 0; bal += a.balance || 0; fl += a.floating || 0; }
+      if (a.link === "online") {
+        on++; eq += a.equity || 0; bal += a.balance || 0; fl += a.floating || 0;
+        (a.positions || []).forEach((p) => {
+          const pr = Number(p.profit) || 0;
+          if (pr > 0) flWin += pr; else if (pr < 0) flLoss += pr;
+        });
+      }
       if (a.link === "error") err++;
       pos += a.link === "online" ? (a.positions || []).length : 0;
       (a.positions || []).forEach((p) => syms.add(p.symbol));
@@ -442,15 +448,18 @@
     const d0 = new Date(); d0.setHours(0, 0, 0, 0);
     const first = D.equity.find((r) => r[0] * 1000 >= d0.getTime());
     const from = on && first ? first[1] : bal - today;
-    tw("bal", eq); tw("pnl", pnl); tw("from", from); tw("fl", fl);
+    tw("bal", eq); tw("pnl", pnl); tw("from", from); tw("fl", fl); tw("flWin", flWin); tw("flLoss", flLoss);
     const pct = from ? (pnl / Math.abs(from)) * 100 : 0; tw("pct", pct);
     setHTML($("pdBal"), `${nf(tv("bal"))}<small>${esc(ccy)}</small>`);
     setText($("pdCcy"), ccy);
     setText($("pdFrom"), `起点 ${nf(tv("from"))} ${ccy} · 余额 ${nf(bal)}`);
     const pv = tv("pnl"), pe = $("pdPnl");
     setText(pe, usd(pv)); const pc = "pd-big " + (pv >= 0 ? "pd-g" : "pd-r"); if (pe.className !== pc) pe.className = pc;
-    const pce = $("pdPnlPct"); setText(pce, `${sgn(tv("pct"))}% · 浮亏金额 ${sgn(tv("fl"))}`);
+    const pce = $("pdPnlPct"); setText(pce, `${sgn(tv("pct"))}%`);
     const pcc = "pd-cap " + (pv >= 0 ? "pd-g" : "pd-r"); if (pce.className !== pcc) pce.className = pcc;
+    const flL = $("pdFlLoss"), flW = $("pdFlWin");
+    if (flL) { setText(flL, `浮亏金额 ${sgn(tv("flLoss"))}`); flL.className = tv("flLoss") < 0 ? "pd-r" : ""; }
+    if (flW) { setText(flW, `浮赢金额 ${sgn(tv("flWin"))}`); flW.className = tv("flWin") > 0 ? "pd-g" : ""; }
     // 运行时长
     const up = Math.max(0, (Date.now() - (D.started || Date.now())) / 1000);
     const hh = Math.floor(up / 3600), mm = Math.floor((up % 3600) / 60), ss = Math.floor(up % 60);

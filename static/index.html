@@ -112,12 +112,15 @@
           <div class="qp-side" id="qSide"></div>
         </div>
 
-        <!-- 选中账户的持仓列表（与快捷交易同一套选择账户） -->
+        <!-- 持仓列表：从上方快捷交易所选账户里挑一个看，归集该账户全部持仓 -->
         <div class="panel q-pospanel" id="qPosPanel">
           <div class="q-poshead">
             <h2>持仓列表</h2>
-            <span class="small muted" id="qPosInfo">与上方「选择账户」同步 · 点 × 平掉这一笔</span>
+            <label class="q-pospick"><span class="small muted">看哪个账户</span>
+              <select class="qp-in" id="qPosAcc" aria-label="选择查看持仓的账户"></select>
+            </label>
           </div>
+          <div class="q-possum" id="qPosSum"><span class="small muted">先在上方「选择账户」勾选，再在这里挑一个账户看持仓。</span></div>
           <div id="qPosList"><p class="small muted" style="margin:0">先选择账户。</p></div>
         </div>
 
@@ -144,7 +147,6 @@
         <summary>高级批量操作（按账号页勾选的账户：挂单、止损止盈、按魔术号平仓、持仓明细）</summary>
         <div id="tradeEmpty"></div>
         <div id="tradeBody" class="hidden" style="display:flex;flex-direction:column;gap:16px">
-          <div id="tradeCool"></div>
           <div class="panel">
             <h2>批量下单</h2>
             <p class="small muted" style="margin:4px 0 12px">对已勾选、已登录的账户同时下单。下单前会先显示每个账户的手数预览，确认后才执行。</p>
@@ -257,7 +259,7 @@
 
           <div class="pd-card pd-metrics">
             <div class="pd-m"><div class="pd-lab">净值 / <span id="pdCcy">USD</span></div><div class="pd-big" id="pdBal">0.00</div><div class="pd-cap" id="pdFrom">起点 0.00</div></div>
-            <div class="pd-m"><div class="pd-lab" title="今日已平仓的盈亏合计（含手续费、隔夜利息），不含持仓浮动；下面一行是当前持仓的浮亏金额">总盈亏 / USD（今日平仓）</div><div class="pd-big pd-g" id="pdPnl">+$0.00</div><div class="pd-cap pd-g" id="pdPnlPct">+0.00%</div></div>
+            <div class="pd-m"><div class="pd-lab" title="今日已平仓的盈亏合计（含手续费、隔夜利息），不含持仓浮动；下面是当前持仓的浮亏金额与浮赢金额">总盈亏 / USD（今日平仓）</div><div class="pd-big pd-g" id="pdPnl">+$0.00</div><div class="pd-cap pd-g" id="pdPnlPct">+0.00%</div><div class="pd-cap" id="pdFloatLines"><span id="pdFlLoss">浮亏金额 —</span><span class="pd-flsep"> · </span><span id="pdFlWin">浮赢金额 —</span></div></div>
             <div class="pd-m"><div class="pd-lab">运行时长</div><div class="pd-big" id="pdMission">00:00</div><div class="pd-cap" id="pdMissionCap">--:-- → --:--</div></div>
             <div class="pd-m pd-gate live"><div class="pd-lab">交易状态<i class="pd-gdot"></i></div>
               <div class="pd-gname"><b id="pdGate">实盘</b><span id="pdGateTag">已连接</span></div>
