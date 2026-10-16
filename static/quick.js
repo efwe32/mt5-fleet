@@ -17,7 +17,7 @@
   };
   const MODE = { fixed: "固定手数", multiplier: "按账户倍数", equity: "按净值比例" };
 
-  const Q = { st: null, sel: new Set(), sum: null, active: false, timer: 0, inflight: false, gen: 0, busy: "", popOpen: false, built: false, res: null };
+  const Q = { st: null, sel: new Set(), sum: null, active: false, timer: 0, inflight: false, gen: 0, busy: "", popOpen: false, built: false, res: null, posAccId: "" };
   window.__quick = Q;
   try { const v = JSON.parse(localStorage.getItem(LS.accs) || "[]"); if (Array.isArray(v)) Q.sel = new Set(v.map(String)); } catch (e) { Q.sel = new Set(); }
 
@@ -62,6 +62,8 @@
       const [accId, ticket] = String(x.dataset.qclose || "").split(":");
       if (accId && ticket) askCloseOne(accId, ticket);
     });
+    const posAcc = byId("qPosAcc");
+    if (posAcc) posAcc.addEventListener("change", () => { Q.posAccId = posAcc.value || ""; renderPosList(); });
     initPick();
   }
 
@@ -173,14 +175,10 @@
     set("qLayS", `空层级价位: ${layers(sh, d)}`);
     // 按钮
     const online = s ? s.online : sel.filter((a) => a.link === "online").length;
-    const coolN = sel.filter((a) => a.lockCooldown).length;
     byId("qp").querySelectorAll("button[data-q]").forEach((b) => {
-      const isOpen = ["buy", "sell", "pair"].includes(b.dataset.q);
-      const openBlocked = isOpen && coolN > 0 && coolN >= sel.filter((a) => a.link === "online").length;
-      b.disabled = !!Q.busy || !sel.length || !online || !!Q.old || openBlocked;
+      b.disabled = !!Q.busy || !sel.length || !online || !!Q.old;
       b.textContent = Q.busy === b.dataset.q ? "执行中…" : ACT[b.dataset.q];
-      if (isOpen && coolN) b.title = "有账户处于锁单冷却：禁止新开仓，可平仓；清仓后自动恢复";
-      else b.removeAttribute("title");
+      b.removeAttribute("title");
     });
     // 自动全平
     const au = s && s.auto, inp = byId("qAuto"), arm = byId("qArm");
@@ -202,32 +200,64 @@
     renderSide();
     renderPosList();
   }
+  function syncPosAccPick() {
+    const sel = byId("qPosAcc"); if (!sel) return;
+    const list = selAccs();
+    const idsNow = list.map((a) => a.id);
+    if (!idsNow.includes(Q.posAccId)) Q.posAccId = idsNow[0] || "";
+    const same = sel.options.length === list.length && list.every((a, i) => sel.options[i] && sel.options[i].value === a.id);
+    if (!same) {
+      sel.innerHTML = list.length
+        ? list.map((a) => `<option value="${h(a.id)}">${h(a.alias || a.login)}（${h(a.login)}）</option>`).join("")
+        : `<option value="">先勾选上方账户</option>`;
+    }
+    if (Q.posAccId) sel.value = Q.posAccId;
+    sel.disabled = !list.length;
+  }
   function renderPosList() {
-    const el = byId("qPosList"), info = byId("qPosInfo"); if (!el) return;
-    const sel = selAccs();
-    const rows = [];
-    sel.forEach((a) => { (a.positions || []).forEach((p) => rows.push({ a, p })); });
-    rows.sort((x, y) => (y.p.profit || 0) - (x.p.profit || 0) || String(x.a.alias || "").localeCompare(String(y.a.alias || "")));
-    if (info) info.textContent = !sel.length ? "先点上方「选择账户」" : `已选 ${sel.length} 个账户 · ${rows.length} 笔持仓 · 点 × 平掉这一笔`;
-    if (!sel.length) {
-      el.innerHTML = `<p class="small muted" style="margin:0">先点上方「选择账户」勾选要看的账户。</p>`;
+    const el = byId("qPosList"), sum = byId("qPosSum"); if (!el) return;
+    syncPosAccPick();
+    const list = selAccs();
+    if (!list.length) {
+      if (sum) sum.innerHTML = `<span class="small muted">先在上方「选择账户」勾选，再在这里挑一个账户看持仓。</span>`;
+      el.innerHTML = `<p class="small muted" style="margin:0">先选择账户。</p>`;
+      return;
+    }
+    const a = list.find((x) => x.id === Q.posAccId) || list[0];
+    Q.posAccId = a.id;
+    const bal = Number(a.balance) || 0;
+    const fl = Number(a.floating) || 0;
+    const win = (a.positions || []).reduce((t, p) => t + Math.max(0, Number(p.profit) || 0), 0);
+    const loss = (a.positions || []).reduce((t, p) => t + Math.min(0, Number(p.profit) || 0), 0);
+    const ccy = a.currency || "USD";
+    const online = a.link === "online";
+    if (sum) {
+      sum.innerHTML = `<div class="q-possum-row">
+        <span>余额 <b>${nf(bal)}</b> ${h(ccy)}</span>
+        <span>浮动合计 <b class="${cls(fl)}">${online ? sg(fl) : "—"}</b></span>
+        <span>浮赢 <b class="q-up">${online ? sg(win) : "—"}</b></span>
+        <span>浮亏 <b class="q-dn">${online ? sg(loss) : "—"}</b></span>
+        <span class="q-note">${online ? "在线" : a.link === "error" ? "出错" : a.link === "connecting" ? "连接中" : "离线"} · ${(a.positions || []).length} 笔</span>
+      </div>`;
+    }
+    const rows = (a.positions || []).slice().sort((x, y) => (y.profit || 0) - (x.profit || 0) || String(x.symbol || "").localeCompare(String(y.symbol || "")));
+    if (!online) {
+      el.innerHTML = `<p class="small muted" style="margin:0">该账户不在线：先在账号页登录。</p>`;
       return;
     }
     if (!rows.length) {
-      const online = sel.filter((a) => a.link === "online").length;
-      el.innerHTML = `<p class="small muted" style="margin:0">${online ? "所选在线账户当前没有持仓。" : "所选账户都不在线：先在账号页登录。"}</p>`;
+      el.innerHTML = `<p class="small muted" style="margin:0">该账户当前没有持仓。</p>`;
       return;
     }
     el.innerHTML = `<div class="q-tw q-pos-tw"><table class="q-pos-t"><thead><tr>
-      <th>账户</th><th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>现价</th><th>浮盈</th><th>魔术号</th><th>备注</th><th></th>
+      <th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>现价</th><th>浮盈</th><th>魔术号</th><th>备注</th><th></th>
     </tr></thead><tbody>
-    ${rows.map(({ a, p }) => {
+    ${rows.map((p) => {
       const side = p.side === "buy" ? "多" : "空";
       const sc = p.side === "buy" ? "q-up" : "q-dn";
       const pl = Number(p.profit) || 0;
       const busy = Q.busy === "close_one";
       return `<tr data-pos="${h(a.id)}:${h(p.ticket)}">
-        <td>${h(a.alias || a.login)}<div class="q-sm q-note">${h(a.login)}</div></td>
         <td>${h(p.symbol)}</td>
         <td class="${sc}">${side}</td>
         <td class="q-num">${nf(p.volume)}</td>
@@ -268,11 +298,6 @@
     if (Q.old) return set("qRes", `<div class="q-hint">后台还是旧版本：请双击一次「一键启动.vbs」换成新版本（MT5 终端和 EA 不受影响），然后刷新网页。</div>`);
     if (!sel.length) return set("qRes", `<div class="q-hint">先点上方「选择账户」勾选要操作的账户（可以全选、按分组选）。</div>`);
     if (s && !s.online) return set("qRes", `<div class="q-hint">所选账户都不在线：先在账号页登录。</div>`);
-    const cool = sel.filter((a) => a.lockCooldown);
-    if (cool.length && !Q.res) {
-      const msg = cool[0].lockCooldownMsg || "冷却中：有锁单禁止新开仓，清仓后自动恢复";
-      return set("qRes", `<div class="q-hint">${h(msg)}${cool.length > 1 ? `（${cool.length} 个账户）` : ""} · 平仓 / 核弹级全平仍可用</div>`);
-    }
     const r = Q.res;
     if (!r) return set("qRes", "");
     const bad = r.results.filter((x) => !x.ok), good = r.results.filter((x) => x.ok);
@@ -282,17 +307,14 @@
   function renderSide() {
     const s = Q.sum, sel = selAccs();
     if (!sel.length) return set("qSide", `<h3>已选账户</h3><p class="q-note">还没有选择账户。</p>`);
-    const coolMap = Object.fromEntries(sel.map((a) => [a.id, a]));
+    const byIdMap = Object.fromEntries(sel.map((a) => [a.id, a]));
     const rows = (s && s.accounts) || sel.map((a) => ({ id: a.id, alias: a.alias, login: a.login, link: a.link, floating: a.floating, longLots: 0, shortLots: 0, symProfit: 0, symbol: "", error: "" }));
     const tot = rows.reduce((t, r) => t + (r.link === "online" ? Number(r.floating) || 0 : 0), 0);
-    const coolN = sel.filter((a) => a.lockCooldown).length;
-    set("qSide", `<h3>已选账户（${rows.length}）<span class="q-note"> · 合计浮动 <b class="${cls(tot)}">${sg(tot)}</b> · 本品种 ${h(symbol())}${coolN ? ` · <b class="q-dn">冷却 ${coolN}</b>` : ""}</span></h3>
+    set("qSide", `<h3>已选账户（${rows.length}）<span class="q-note"> · 合计浮动 <b class="${cls(tot)}">${sg(tot)}</b> · 本品种 ${h(symbol())}</span></h3>
       <div class="q-tw"><table><thead><tr><th>账户</th><th>账号</th><th>状态</th><th>浮动</th><th>多</th><th>空</th><th>本品种盈亏</th></tr></thead><tbody>
       ${rows.map((r) => {
-        const a = coolMap[r.id];
-        const cool = a && a.lockCooldown;
-        return `<tr><td>${h(r.alias)}${cool ? `<div class="q-dn q-sm">冷却中 · 有锁单禁止新开仓</div>` : ""}${r.error ? `<div class="q-dn q-sm">${h(r.error)}</div>` : r.note ? `<div class="q-note q-sm">${h(r.note)}</div>` : ""}</td><td class="q-num">${h(r.login)}</td>
-        <td class="${cool ? "q-dn" : r.link === "online" ? "q-up" : r.link === "error" ? "q-dn" : "q-note"}">${cool ? "冷却" : r.link === "online" ? "在线" : r.link === "error" ? "出错" : r.link === "connecting" ? "连接中" : "离线"}</td>
+        return `<tr><td>${h(r.alias)}${r.error ? `<div class="q-dn q-sm">${h(r.error)}</div>` : r.note ? `<div class="q-note q-sm">${h(r.note)}</div>` : ""}</td><td class="q-num">${h(r.login)}</td>
+        <td class="${r.link === "online" ? "q-up" : r.link === "error" ? "q-dn" : "q-note"}">${r.link === "online" ? "在线" : r.link === "error" ? "出错" : r.link === "connecting" ? "连接中" : "离线"}</td>
         <td class="q-num ${cls(r.floating)}">${r.link === "online" ? sg(r.floating) : "—"}</td><td class="q-num">${r.longLots ? nf(r.longLots) : "—"}</td><td class="q-num">${r.shortLots ? nf(r.shortLots) : "—"}</td>
         <td class="q-num ${cls(r.symProfit)}">${r.longLots || r.shortLots ? sg(r.symProfit) : "—"}</td></tr>`;
       }).join("")}
@@ -327,8 +349,6 @@
     const noConfirm = !!(Q.st && Q.st.settings && Q.st.settings.quick_no_confirm);
     const off = sel.length - on.length, offTxt = off ? `<div class="small muted">${off} 个未登录/停用账户会记为失败。</div>` : "";
     if (["buy", "sell", "pair"].includes(action)) {
-      const cool = on.filter((a) => a.lockCooldown);
-      if (cool.length) return toast((cool[0].lockCooldownMsg || "冷却中：有锁单禁止新开仓") + (cool.length > 1 ? `（另有 ${cool.length - 1} 个账户同况）` : ""), true);
       const lots = Number(byId("qLots").value), mode = byId("qMode").value, ref = Number(byId("qRef").value);
       if (!/^[A-Za-z0-9._#&+\-]{1,32}$/.test(sym)) return toast("请填写品种", true);
       if (!(lots > 0)) return toast("开单手数需大于 0", true);

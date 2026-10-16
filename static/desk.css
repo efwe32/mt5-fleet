@@ -70,6 +70,8 @@ body.desk-mode .warnbar{background:#fff3f5;border-color:#e9a5b4;color:#b0203c;bo
 .pd-big{font-weight:700;font-size:30px;margin:10px 0 8px;letter-spacing:-.01em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pd-big small{font-size:.62em;font-weight:700;margin-left:6px}
 .pd-cap{font-size:11px;color:var(--pd-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+#pdFloatLines{font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.pd-flsep{color:var(--pd-mut);opacity:.7}
 .pd-g{color:var(--pd-g)}.pd-r{color:var(--pd-crim)}.pd-b{color:var(--pd-blue)}.pd-p{color:var(--pd-pink)}
 .pd-gate .pd-gdot{position:absolute;right:0;top:3px;width:7px;height:7px;border-radius:50%;background:var(--pd-g);animation:pulse 1.4s infinite}
 .pd-gname{display:flex;align-items:baseline;gap:12px;margin:10px 0 8px}

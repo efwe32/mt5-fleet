@@ -99,8 +99,7 @@
     byId("alOff").disabled = !!A.busy || !live;
     byId("alOn").textContent = A.busy === "on" ? "正在开启…" : "一键开启";
     byId("alOff").textContent = A.busy === "off" ? "正在关闭…" : "一键关闭";
-    const coolN = sel.filter((a) => a.lockCooldown).length;
-    set("alSum", sel.length ? `已选 ${sel.length} 个 · 在线 ${live} · <span class="up-t">开 ${on}</span> · <span class="down-t">关 ${off}</span>${coolN ? ` · <span class="down-t">冷却 ${coolN}</span>` : ""}` : "先点「选择账户」勾选要开关的账户（可全选）");
+    set("alSum", sel.length ? `已选 ${sel.length} 个 · 在线 ${live} · <span class="up-t">开 ${on}</span> · <span class="down-t">关 ${off}</span>` : "先点「选择账户」勾选要开关的账户（可全选）");
     const r = A.res;
     set("alRes", !r ? "" : `<div class="al-rh"><b>${h(r.title)}</b>：<span class="up-t">成功 ${r.ok}</span> / <span class="${r.fail ? "down-t" : ""}">失败 ${r.fail}</span> <span class="muted small">· ${hms(r.at)}</span> <button type="button" class="al-x" data-alx="1" aria-label="关闭结果">×</button></div>
       <div class="al-rl">${r.results.filter((x) => !x.ok).map((x) => `<div class="down-t">✗ 失败 · ${h(x.alias)}：${h(x.message)}</div>`).join("")}${r.results.filter((x) => x.ok).map((x) => `<div class="up-t">✓ 成功 · ${h(x.alias)}：${h(x.message)}</div>`).join("")}</div>`);
@@ -111,8 +110,7 @@
         const tag = v === null ? `<span class="tag">—</span>` : v ? `<span class="tag ok">开</span>` : `<span class="tag warn">关</span>`;
         const link = a.link === "online" ? `<span class="up-t">在线</span>` : a.link === "error" ? `<span class="down-t">出错</span>` : a.link === "connecting" ? "连接中" : `<span class="muted">离线</span>`;
         const notes = [];
-        if (a.lockCooldown) notes.push(a.lockCooldownMsg || "冷却中：有锁单禁止新开仓，清仓前不能开算法");
-        else if (a.algo_off) notes.push("你已手动关闭，后台重连不会自动打开");
+        if (a.algo_off) notes.push("你已手动关闭，后台重连不会自动打开");
         if (online(a) && !a.ownedTerminal && !mock) notes.push("不是本程序启动的终端，不会去点它");
         if (a.enabled === false) notes.push("已停用");
         return `<tr><td>${h(a.alias || a.login)}</td><td class="num">${h(a.login)}</td><td>${link}</td><td>${tag}</td><td class="small muted">${h(notes.join("；"))}</td></tr>`;
@@ -125,10 +123,6 @@
     const sel = selAccs(); if (!sel.length) return toast("先选择账户", true);
     const live = sel.filter(online), skip = sel.length - live.length;
     if (!live.length) return toast("所选账户都不在线：先在账号页登录", true);
-    if (on) {
-      const cool = live.filter((a) => a.lockCooldown);
-      if (cool.length === live.length) return toast(cool[0].lockCooldownMsg || "冷却中：有锁单禁止开算法，请先清仓", true);
-    }
     const names = live.slice(0, 8).map((a) => h(a.alias || a.login)).join("、") + (live.length > 8 ? ` 等 ${live.length} 个` : "");
     const desc = on
       ? `<div>在 <b>${live.length}</b> 个在线账户（${names}）的 MT5 里<b>打开「算法交易」</b>。打开后，这些终端里挂着的 EA 会开始自动下单。</div>`
