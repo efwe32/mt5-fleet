@@ -1,4 +1,4 @@
-"""v1.4.5：取消浮亏警报。
+"""v1.4.6：取消浮亏警报。
 python tests/test_panel145.py
 """
 import os
@@ -24,7 +24,7 @@ def check(name, cond, info=""):
         fails.append(name)
 
 
-check("版本 1.4.5", __version__ == "1.4.5", __version__)
+check("版本 1.4.6", __version__ == "1.4.6", __version__)
 check("无 alerts 模块", not (ROOT / "fleet" / "alerts.py").exists())
 
 js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
@@ -64,7 +64,7 @@ try:
             time.sleep(0.3)
     check("mock 起来", bool(token))
     c = httpx.Client(base_url=f"http://127.0.0.1:{port}", headers={"X-Fleet-Token": token}, timeout=60)
-    check("ping", c.get("/ping").json().get("version") == "1.4.5")
+    check("ping", c.get("/ping").json().get("version") == "1.4.6")
     st = c.get("/api/state").json()
     check("状态无 alerts", "alerts" not in st and "alertPopup" not in st and "popupMs" not in st)
     check("设置无 alert_loss", "alert_loss" not in st["settings"])
