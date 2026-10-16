@@ -1195,16 +1195,6 @@ class Worker:
     # ---------------- 主循环 ----------------
     def handle(self, cmd: dict):
         name, req, params = cmd.get("cmd"), cmd.get("req"), cmd.get("params") or {}
-        if name == "set_float" and self.mock:
-            try:
-                self.mt5._force_profit = float(params.get("floating"))
-            except (TypeError, ValueError):
-                self.emit(type="result", req=req, ok=False, message="浮亏金额不对")
-                return
-            if self.link == "online":
-                self.poll()
-            self.emit(type="result", req=req, ok=True, message="已设置测试浮亏")
-            return
         if name == "update_account":
             self.acc.update(cmd.get("account") or {})
             self._sym_cache = {}          # 后缀 / 品种映射可能改了

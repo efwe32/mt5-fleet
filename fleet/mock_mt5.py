@@ -84,7 +84,6 @@ class MockMT5:
         self._rng = random.Random()
         # 测试模式下的“自动 EA”：随机开/平小单，让收益台有真实的数据流（测试时可用环境变量关闭）
         self._auto = os.environ.get("FLEET_MOCK_AUTOTRADE", "1") != "0"
-        self._force_profit = None  # 测试：固定浮亏，用来触发警报
 
     # 让实例看起来像模块：常量
     def __getattr__(self, name):
@@ -263,10 +262,7 @@ class MockMT5:
             self._err = (-10004, "No IPC connection")
             return None
         self._tick()
-        if self._force_profit is not None:
-            profit = round(float(self._force_profit), 2)
-        else:
-            profit = round(sum(self._profit(p)[0] for p in self._positions.values()), 2)
+        profit = round(sum(self._profit(p)[0] for p in self._positions.values()), 2)
         equity = round(self._balance + profit, 2)
         margin = self._margin()
         level = round(equity / margin * 100, 2) if margin else 0.0
