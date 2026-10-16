@@ -201,7 +201,6 @@ body.desk-mode .warnbar{background:#fff3f5;border-color:#e9a5b4;color:#b0203c;bo
 .pd-topbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:10px 14px}
 .pdesk .fx{color:var(--pd-ink)}
 .pdesk .fx .src{color:var(--pd-mut)}
-.pdesk .alert-chip{background:#fff5f6}
 .pd-cal{padding:12px 14px}
 .pd-cal-body{margin-top:8px;overflow-x:auto}
 .pd-cal table{width:100%;border-collapse:collapse;font-size:13px}

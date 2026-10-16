@@ -130,38 +130,6 @@ function renderQuote(q) {
     : `USDJPY <span class="px ${q.change > 0 ? "up-t" : q.change < 0 ? "down-t" : ""}">${Number(q.price).toFixed(q.digits || 3)}</span><span class="chg ${q.change > 0 ? "up-t" : q.change < 0 ? "down-t" : ""}">${q.change > 0 ? "↑" : q.change < 0 ? "↓" : ""}${q.change > 0 ? "+" : ""}${Number(q.change).toFixed(2)}%</span><span class="src">24小时 · ${esc(q.source || "")}${q.symbol && q.symbol !== "USDJPY" ? " · " + esc(q.symbol) : ""}</span>`;
   $$("[data-slot=fx]").forEach((el) => { if (el.innerHTML !== html) el.innerHTML = html; });
 }
-function renderAlerts(list) {
-  const html = `<b>警报</b>` + (!list.length
-    ? `<span class="small muted">暂无</span>`
-    : list.map((a) => `<span class="alert-chip"><b>警报${a.n}</b><span>${esc(a.alias)} ${esc(a.login)} 浮亏 ${Number(a.floating).toFixed(2)} ${esc(a.currency || "")} · ${tstr(a.at)}</span><button type="button" class="btn danger sm" data-act="alert-view" data-alert="${esc(a.id)}">查看</button></span>`).join(""));
-  $$("[data-slot=alerts]").forEach((el) => { if (el.innerHTML !== html) el.innerHTML = html; });
-}
-const heardAlerts = new Set();
-let beepReady = false;
-function beepNew(list) {
-  const ids = list.map((a) => a.id);
-  if (!beepReady) { ids.forEach((id) => heardAlerts.add(id)); beepReady = true; return; }
-  const fresh = ids.filter((id) => !heardAlerts.has(id));
-  ids.forEach((id) => heardAlerts.add(id));
-  if (fresh.length) beep();
-}
-function beep() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = ui.audio || (ui.audio = new Ctx());
-    const tone = (freq, at) => {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = "sine"; o.frequency.value = freq; o.connect(g); g.connect(ctx.destination);
-      g.gain.setValueAtTime(0.0001, ctx.currentTime + at);
-      g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + at + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.35);
-      o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + 0.36);
-    };
-    tone(880, 0); tone(660, 0.18);
-  } catch (e) { /* 浏览器没开声音权限时静默 */ }
-}
-
 // ---------------- 导航 ----------------
 function renderNav() {
   const html = TABS.map(([id, label]) => `<button type="button" data-tab="${id}" class="${ui.tab === id ? "on" : ""}" ${ui.tab === id ? 'aria-current="page"' : ""}>${label}${id === "settings" && upd.newer ? '<span class="nav-new" title="有新版本，去设置里更新">新</span>' : ""}</button>`).join("");
@@ -224,17 +192,12 @@ function render() {
   if (!st.mock && !st.dpapi) warns.push("当前系统不支持 Windows DPAPI，密码只做了 base64 混淆保存（不是加密），请保护好数据目录。");
   once("warn", warns, () => { $("#warn").innerHTML = warns.map((w) => `<div class="warnbar">${esc(w)}</div>`).join(""); });
   const shownBanner = st.banner && st.banner.at !== ui.bannerDismissed && (Date.now() - st.banner.at < POPUP_MS) ? st.banner : null;
-  const ap = st.alertPopup;
-  const shownAlert = ap && ap.at !== ui.alertPopupHidden && (Date.now() - ap.at < POPUP_MS) ? ap : null;
-  once("banner", [shownBanner, shownAlert], () => {
-    const parts = [];
-    if (shownAlert) parts.push(`<div class="banner" style="border-color:var(--down)">警报${shownAlert.n}：${esc(shownAlert.text)}<button class="btn danger sm" data-act="alert-view" data-alert="${esc(shownAlert.id)}" style="margin-left:auto">查看</button></div>`);
-    if (shownBanner) parts.push(`<div class="banner">${esc(shownBanner.title)}：成功 <span class="num up-t">${shownBanner.ok}</span>，失败 <span class="num ${shownBanner.fail ? "down-t" : "muted"}">${shownBanner.fail}</span><button class="btn ghost sm" data-act="banner-x" style="margin-left:auto">知道了</button></div>`);
-    $("#banner").innerHTML = parts.join("");
+  once("banner", [shownBanner], () => {
+    $("#banner").innerHTML = shownBanner
+      ? `<div class="banner">${esc(shownBanner.title)}：成功 <span class="num up-t">${shownBanner.ok}</span>，失败 <span class="num ${shownBanner.fail ? "down-t" : "muted"}">${shownBanner.fail}</span><button class="btn ghost sm" data-act="banner-x" style="margin-left:auto">知道了</button></div>`
+      : "";
   });
   renderQuote(st.quote);
-  renderAlerts(st.alerts || []);
-  beepNew(st.alerts || []);
   // datalists
   once("lists", [st.symbols, st.library, accs.map((a) => a.positions.map((p) => p.symbol))], () => {
     const syms = [...new Set([...st.symbols, ...accs.flatMap((a) => a.positions.map((p) => p.symbol))])];
@@ -904,7 +867,7 @@ async function loadLogs() {
 // ---------------- 设置页 ----------------
 function fillSettings() {
   const s = ui.state?.settings; if (!s) return;
-  $("#setRemote").value = s.remote_enabled ? "1" : "0"; $("#setRemotePw").value = ""; $("#setAlert").value = s.alert_loss ?? 3000; $("#setMaxLots").value = s.max_lots; $("#setMaxTotal").value = s.max_total_lots;
+  $("#setRemote").value = s.remote_enabled ? "1" : "0"; $("#setRemotePw").value = ""; $("#setMaxLots").value = s.max_lots; $("#setMaxTotal").value = s.max_total_lots;
   $("#setDev").value = s.deviation; $("#setPoll").value = s.poll_interval; $("#setGroups").value = (s.scale_groups || []).join(",");
   $("#setCloseTerm").value = s.close_terminal_on_disconnect ? "1" : "0"; $("#setIni").value = s.ini_encoding || "utf-16";
   $("#setCloseExit").value = s.close_terminals_on_exit ? "1" : "0"; $("#setAlgo").value = s.auto_enable_algo === false ? "0" : "1"; $("#rootPath").textContent = ui.state.terminalsRoot;
@@ -923,7 +886,7 @@ function fillSettings() {
 }
 async function saveSettings(extra) {
   const body = extra || {
-    remote_enabled: $("#setRemote").value === "1", remote_password: $("#setRemotePw").value, alert_loss: $("#setAlert").value, max_lots: $("#setMaxLots").value, max_total_lots: $("#setMaxTotal").value, deviation: $("#setDev").value,
+    remote_enabled: $("#setRemote").value === "1", remote_password: $("#setRemotePw").value, max_lots: $("#setMaxLots").value, max_total_lots: $("#setMaxTotal").value, deviation: $("#setDev").value,
     poll_interval: $("#setPoll").value, scale_groups: $("#setGroups").value,
     close_terminal_on_disconnect: $("#setCloseTerm").value === "1", close_terminals_on_exit: $("#setCloseExit").value === "1", auto_enable_algo: $("#setAlgo").value === "1", ini_encoding: $("#setIni").value,
     template_dir: $("#setTpl").value.trim(), allow_dll_import: $("#setDll").value === "1",
@@ -1158,11 +1121,6 @@ document.addEventListener("click", async (e) => {
   }
   switch (d.act) {
     case "banner-x": ui.bannerDismissed = ui.state.banner?.at; ui.lastRender.banner = null; return render();
-    case "alert-view": {
-      const id = t.dataset.alert; if (!id) return;
-      try { await api("/api/alerts/view", { id }); ui.alertPopupHidden = ui.state?.alertPopup?.at; ui.lastRender.banner = null; await poll(); } catch (er) { toast(er.message, true); }
-      return;
-    }
     case "login": if (needSel()) startProgress("批量登录", "/api/login", { ids: selIds() }); return;
     case "disconnect": if (needSel()) runBatch("断开", "/api/disconnect", { ids: selIds() }); return;
     case "refresh": if (needSel()) runBatch("刷新", "/api/refresh", { ids: selIds() }); return;

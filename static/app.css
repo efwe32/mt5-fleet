@@ -172,10 +172,6 @@ tr.off{opacity:.6}
 .fx .px{font-family:var(--mono);font-size:20px}
 .fx .chg{font-family:var(--mono);font-size:13px}
 .fx .src{font-size:12px;color:var(--faint);font-weight:400}
-.alert-board{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.alert-board>b{margin-right:4px}
-.alert-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--down);color:var(--down);background:color-mix(in srgb,var(--down) 12%,transparent);border-radius:999px;padding:2px 4px 2px 10px;font-size:13px}
-.alert-chip button{min-height:28px}
 
 .chip.lib-item{display:inline-flex;align-items:center;gap:4px;padding-right:4px}
 .chip.lib-item .btn{margin:0}
