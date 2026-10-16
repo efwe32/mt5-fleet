@@ -67,7 +67,6 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "update_url": "",            # 在线更新：自定义更新地址（latest.json 直链，GitHub 打不开时用）
     "update_mirror": True,       # github.com 下载慢时改走加速镜像（内容按 sha256 校验）
     "update_auto_check": True,   # 打开网页时检查有没有新版本（只提示，不会自动安装）
-    "alert_loss": 3000,         # 单个账户浮亏达到这个金额（账户货币）时警报，查看后取消
     "remote_enabled": False,    # 手机远程访问（默认关）。密码只存摘要 remote_pass_hash
     "account_groups": ["主仓", "跟单", "测试"],  # 自定义分组名（账号页管理；账户的 group 字段指向其中一个）
 }
@@ -86,6 +85,7 @@ class Store:
         self._lock = threading.RLock()
         self.first_launch = not self.settings_path.exists()
         self.settings = {**DEFAULT_SETTINGS, **self._read(self.settings_path, {})}
+        self.settings.pop("alert_loss", None)  # v1.4.5 已取消浮亏警报
         self.settings.pop("terminal_root", None)
         self.settings.pop("dry_run", None)   # 旧版本的 dry_run 开关已取消：所有操作都直接实盘发送
         self.accounts: list[dict] = [self._normalize(a) for a in self._read(self.accounts_path, {"accounts": []}).get("accounts", [])]

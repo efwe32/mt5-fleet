@@ -21,7 +21,6 @@ from . import secrets
 from . import terminal as T
 from .config import Store, app_root, terminals_root
 from .procs import Registry
-from . import alerts
 from .remote import RemoteGate
 from . import quote as fx
 from .worker import worker_main
@@ -62,14 +61,9 @@ class Fleet:
         self.lock = threading.RLock()
         self.busy = threading.Lock()
         self.banner = None
-        self.alerts: list[dict] = []
-        self.alert_armed: dict = {}
-        self.alert_seq = 0
-        self.alert_popup = None
         self.quote: dict | None = None
         self.remote = RemoteGate(store)
         self.clock = {"unix": 0, "offset": 0.0, "source": "", "at": 0.0}  # MT5 服务器时间（来自 tick）
-        self._load_alerts()
         self.registry = Registry(store.data_dir)   # 本程序启动的终端 PID
         self.root = terminals_root()
         self.mt5_import_error = None
@@ -211,7 +205,6 @@ class Fleet:
 
     def _on_event(self, ev: dict):
         t, acc_id = ev.get("type"), ev.get("id")
-        self._pending_alert = None
         with self.lock:
             rt = self.runtime.setdefault(acc_id, {"link": "offline", "linkError": "", "snapshot": None, "ts": 0})
             if t == "status":
@@ -222,7 +215,6 @@ class Fleet:
                     self._remember(acc_id, ev["snapshot"])
                     self._sync_lock_cooldown(acc_id, ev["snapshot"])
                     if rt.get("link") == "online":
-                        self._pending_alert = self._apply_alerts_locked()
                         stime = int((ev["snapshot"] or {}).get("server_time") or 0)
                         if stime > 0:
                             a = self.store.get(acc_id) or {}
@@ -263,7 +255,6 @@ class Fleet:
                     rt["link"], rt["linkError"] = "offline", ""
                 if w:
                     threading.Thread(target=self._reap, args=(w,), daemon=True).start()
-        self._flush_alerts()
 
     @staticmethod
     def _reap(w):
@@ -1670,90 +1661,7 @@ class Fleet:
             self.runtime.pop(a["id"], None)
         return len(gone)
 
-    # ---------------- 浮亏警报 / 报价 / 日历 ----------------
-    def _alerts_path(self) -> Path:
-        return self.store.data_dir / "alerts.json"
-
-    def _load_alerts(self):
-        try:
-            d = json.loads(self._alerts_path().read_text(encoding="utf-8"))
-        except Exception:
-            d = {}
-        self.alerts = list(d.get("alerts") or [])
-        self.alert_armed = {str(k): True for k, v in (d.get("armed") or {}).items() if v}
-        self.alert_seq = int(d.get("seq") or 0)
-
-    def _save_alerts(self):
-        try:
-            self.store._write(self._alerts_path(), {
-                "alerts": self.alerts, "armed": self.alert_armed, "seq": self.alert_seq,
-            })
-        except Exception:
-            pass
-
-    def _apply_alerts_locked(self):
-        """调用方已持有 self.lock。返回 (日志, 是否变化)，由 _flush_alerts 落盘。"""
-        rows = []
-        for a in self.store.accounts:
-            rt = self.runtime.get(a["id"], {})
-            snap = rt.get("snapshot")
-            if rt.get("link") != "online" or not snap:
-                continue
-            acc = snap.get("account") or {}
-            rows.append({
-                "id": a["id"], "alias": a.get("alias") or a["id"], "login": a.get("login") or "",
-                "floating": acc.get("profit", 0), "currency": acc.get("currency") or "",
-            })
-        fresh, armed = alerts.scan(rows, alerts.loss_threshold(self.store.settings), self.alert_armed)
-        changed = bool(fresh) or armed != self.alert_armed
-        self.alert_armed = armed
-        logs = []
-        now = int(time.time() * 1000)
-        for f in fresh:
-            self.alert_seq += 1
-            item = {**f, "n": self.alert_seq, "id": uuid.uuid4().hex[:8], "at": now}
-            self.alerts.append(item)
-            text = f"{item['alias']}（{item['login']}）浮亏 {item['floating']:.2f} {item['currency']}".strip()
-            self.alert_popup = {"id": item["id"], "n": item["n"], "title": f"警报{item['n']}", "text": text, "at": now}
-            logs.append((item["accountId"], text, item["alias"]))
-        return logs, changed
-
-    def _flush_alerts(self):
-        pending = getattr(self, "_pending_alert", None)
-        self._pending_alert = None
-        if not pending:
-            return
-        logs, changed = pending
-        for acc_id, text, alias in logs:
-            self.log(acc_id, "浮亏警报", True, text, alias)
-        if changed:
-            self._save_alerts()
-
-    def _sync_alerts(self, accounts: list[dict]):
-        with self.lock:
-            self._pending_alert = self._apply_alerts_locked()
-        self._flush_alerts()
-
-    def view_alert(self, alert_id: str) -> bool:
-        """查看后取消这一条。不重新武装：浮亏还在阈值以下时不会再响，要等回到阈值以上。"""
-        with self.lock:
-            before = len(self.alerts)
-            self.alerts = [a for a in self.alerts if a.get("id") != alert_id]
-            if self.alert_popup and self.alert_popup.get("id") == alert_id:
-                self.alert_popup = None
-            gone = len(self.alerts) != before
-        if gone:
-            self._save_alerts()
-        return gone
-
-    def set_mock_floating(self, acc_id: str, floating: float) -> tuple[bool, str]:
-        if not self.mock:
-            return False, "只有测试模式可以设置浮亏"
-        if not self._alive(acc_id):
-            return False, "这个账户不在线"
-        self._send(acc_id, "set_float", {"floating": floating})
-        return True, "已发送"
-
+    # ---------------- 报价 ----------------
     def _quote_loop(self):
         while not self._stop:
             try:
@@ -1819,13 +1727,8 @@ class Fleet:
                     "ownedTerminal": bool(self.registry.get(a["terminal_path"])) if a["terminal_path"] else False,
                 })
                 accounts.append(d)
-        self._sync_alerts(accounts)
-        popup = self.alert_popup
-        if popup and int(time.time() * 1000) - int(popup.get("at") or 0) > alerts.POPUP_MS:
-            popup = None
         settings = {k: v for k, v in self.store.settings.items() if k != "remote_pass_hash"}
         return {"accounts": accounts, "settings": settings, "banner": self.banner, "mock": self.mock,
-                "alerts": list(self.alerts), "alertPopup": popup, "popupMs": alerts.POPUP_MS,
                 "quote": self.quote, "remote": self.remote.public(),
                 "clock": {"unix": int(self.clock.get("unix") or 0),
                           "offset": round(float(self.clock.get("offset") or 0), 3),

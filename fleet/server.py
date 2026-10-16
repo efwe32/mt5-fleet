@@ -187,22 +187,7 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
         st["busy"] = busy.locked()
         return st
 
-    @app.post("/api/alerts/view")
-    def view_alert(body: dict):
-        return {"ok": fleet.view_alert(str(body.get("id") or ""))}
 
-    @app.post("/api/mock/floating")
-    def mock_floating(body: dict):
-        if not fleet.mock:
-            raise HTTPException(404, "没有这个接口")
-        try:
-            floating = float(body.get("floating"))
-        except (TypeError, ValueError):
-            raise HTTPException(400, "浮亏金额不对")
-        ok, msg = fleet.set_mock_floating(str(body.get("id") or ""), floating)
-        if not ok:
-            raise HTTPException(400, msg)
-        return {"ok": True, "message": msg}
 
     @app.post("/api/remote/login")
     def remote_login(request: Request, body: dict):
@@ -568,7 +553,7 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
     def save_settings(body: dict):
         s = fleet.store.settings
         for k, lo, hi in (("max_lots", 0.01, 1000), ("max_total_lots", 0.01, 10000), ("poll_interval", 0.5, 30),
-                          ("deviation", 0, 1000), ("alert_loss", 1, 100000000)):
+                          ("deviation", 0, 1000)):
             if k in body and body[k] not in (None, ""):
                 try:
                     v = float(body[k])
@@ -576,7 +561,7 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
                     raise HTTPException(400, f"{k} 需为数字")
                 if not lo <= v <= hi:
                     raise HTTPException(400, f"{k} 需在 {lo}~{hi} 之间")
-                s[k] = int(v) if k in ("deviation", "alert_loss") else v
+                s[k] = int(v) if k == "deviation" else v
         if "scale_groups" in body:
             g = body["scale_groups"]
             s["scale_groups"] = [x.strip() for x in (g.split(",") if isinstance(g, str) else g) if x.strip()]
@@ -637,6 +622,7 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
             if on and not fleet.remote.has_password():
                 raise HTTPException(400, "请先设置远程密码，再打开远程访问")
             s["remote_enabled"] = on
+        s.pop("alert_loss", None)  # v1.4.5 已取消浮亏警报
         fleet.store.first_launch = False
         fleet.store.save_settings()
         if s.get("remote_enabled") and fleet.remote.has_password():
