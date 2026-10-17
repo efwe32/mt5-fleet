@@ -120,6 +120,7 @@
   // ---------------- 操作 ----------------
   function ask(on) {
     if (A.busy) return toast("上一次开关还在执行", true);
+    if (A.popOpen) { A.popOpen = false; renderPick(); }
     const sel = selAccs(); if (!sel.length) return toast("先选择账户", true);
     const live = sel.filter(online), skip = sel.length - live.length;
     if (!live.length) return toast("所选账户都不在线：先在账号页登录", true);

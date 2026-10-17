@@ -79,7 +79,15 @@ function modal({ title, desc, body, actions, wide, onMount }) {
     };
     act.appendChild(b);
   });
-  $(".overlay", root).addEventListener("mousedown", (e) => { if (e.target.classList.contains("overlay")) closeModal(); });
+  // 手机端：点开确认框的那一次触摸若落到新加的遮罩上，mousedown 会立刻关掉对话框。
+  // 改成 click，并在打开后短时忽略点遮罩关闭。
+  const ov = $(".overlay", root);
+  const openedAt = Date.now();
+  ov.addEventListener("click", (e) => {
+    if (e.target !== ov) return;
+    if (Date.now() - openedAt < 400) return;
+    closeModal();
+  });
   document.addEventListener("keydown", escClose);
   onMount && onMount(root);
 }

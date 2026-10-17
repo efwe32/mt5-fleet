@@ -76,7 +76,12 @@ details.adv>summary{cursor:pointer;padding:12px 16px;font-weight:600;color:var(-
 details.adv[open]>summary{border-bottom:1px solid var(--line)}
 details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
 @media (max-width:1100px){.qp-wrap{grid-template-columns:1fr}.qp{max-width:560px}}
-@media (max-width:560px){.qp{padding:12px 10px}.qb{font-size:17px;min-height:52px}.qp .pd-pop{width:calc(100vw - 32px)}.qp-head{flex-wrap:wrap}.qp .pd-pick{width:100%}.qp .pd-pickbtn{width:100%;max-width:none;text-align:left}.qp .pd-pop{left:0;right:auto}}
+@media (max-width:560px){
+  .qp{padding:12px 10px}.qb{font-size:17px;min-height:52px}
+  .qp-head{flex-wrap:wrap}.qp .pd-pick{width:100%}
+  .qp .pd-pickbtn{width:100%;max-width:none;text-align:left}
+  .qp .pd-pop{position:fixed;left:12px;right:12px;top:auto;bottom:16px;width:auto;max-width:none;max-height:min(70vh,560px);overflow:auto;z-index:90}
+}
 /* 交易页：选中账户持仓列表（快捷交易同一套选择） */
 .q-pospanel{margin-bottom:16px;max-width:1100px;background:#000;border:1px solid #2c2c2c;border-radius:8px;padding:12px 14px;color:#e8e8e8;
   --pd-line:#2c2c2c;--line:#2a2a2a;--muted:#9a9a9a;--fg:#f2f2f2}
@@ -149,8 +154,10 @@ details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
   .al-head{width:100%}
   .al-head .pd-pick,.al-panel .pd-pick{width:100%}
   .al-panel .pd-pickbtn{width:100%;max-width:none;text-align:left;min-height:44px;font-size:15px}
-  .al-panel .pd-pop{position:fixed;left:12px;right:12px;top:auto;width:auto;max-width:none;max-height:70vh;overflow:auto;
-    background:#0d0d0d !important;border-color:#333 !important;color:#eee !important;z-index:80}
+  /* 必须钉在视口内：原先 top:auto 的 fixed 会落到文档坐标（交易页很靠下），手机上看不见选账户弹层 */
+  .al-panel .pd-pop{position:fixed;left:12px;right:12px;top:auto;bottom:16px;width:auto;max-width:none;max-height:min(70vh,560px);overflow:auto;
+    background:#0d0d0d !important;border-color:#333 !important;color:#eee !important;z-index:90;
+    box-shadow:0 -8px 40px rgba(0,0,0,.55)}
   .al-panel .pd-pop .pp-row button{min-height:40px;font-size:14px;color:#ddd !important;background:#1b1b1b !important}
   .al-panel .pd-pop label{min-height:44px;padding:10px 8px;color:#eee !important}
   .al-panel .pd-pop label .nm{color:#f2f2f2 !important}

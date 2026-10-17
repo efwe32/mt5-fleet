@@ -91,7 +91,7 @@ tr.off{opacity:.6}
 .card dl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 0}
 .card dt{font-size:12px;color:var(--muted)}.card dd{margin:0}
 .strat{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);background:var(--ink);border-radius:6px;padding:10px 12px;flex-wrap:wrap}
-.overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--ink) 78%,transparent);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px}
+.overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--ink) 78%,transparent);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px}
 .dialog{width:100%;max-width:560px;max-height:calc(100vh - 32px);overflow:auto;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:16px}
 .dialog.wide{max-width:760px}
 .dialog h2{margin:0;font-size:18px}
