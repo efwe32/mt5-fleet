@@ -175,7 +175,8 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index():
         html = (sd / "index.html").read_text(encoding="utf-8")
-        return HTMLResponse(html.replace("__FLEET_TOKEN__", token), headers={"Cache-Control": "no-store"})
+        html = html.replace("__FLEET_TOKEN__", token).replace("__FLEET_VER__", __version__)
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     app.mount("/static", StaticFiles(directory=str(sd)), name="static")
 
