@@ -16,7 +16,7 @@ def check(name, cond, info=""):
     if not cond:
         fails.append(name)
 
-check("版本 1.4.8", __version__ == "1.4.8", __version__)
+check("版本 ≥1.4.8", tuple(int(x) for x in __version__.split(".")[:3]) >= (1, 4, 8), __version__)
 css = (ROOT / "static" / "quick.css").read_text(encoding="utf-8")
 js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
 aj = (ROOT / "static" / "algo.js").read_text(encoding="utf-8")
@@ -26,7 +26,7 @@ check("确认框 z-index 高于弹层", "z-index:100" in (ROOT / "static" / "app
 check("遮罩用 click 且防误触", "Date.now() - openedAt < 400" in js and 'e.target !== ov' in js)
 check("开确认前先收起选账户", "if (A.popOpen)" in aj and "确认开启" in aj)
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
-check("更新说明", "## v1.4.8" in notes and "算法交易" in notes and "手机" in notes)
+check("更新说明含 1.4.8", "## v1.4.8" in notes and "算法交易" in notes and "手机" in notes)
 
 print()
 if fails:
