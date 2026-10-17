@@ -8,7 +8,7 @@
   const pad = (n) => String(n).padStart(2, "0");
   const hms = (ms) => { const off = ((window.__fleetClock && window.__fleetClock.offset) || 0) * 1000; const d = new Date((Number(ms) || Date.now()) + off); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`; };
   const LS = "fleet.algoAccs";
-  const A = { st: null, sel: new Set(), popOpen: false, built: false, busy: "", res: null };
+  const A = { st: null, sel: new Set(), popOpen: false, openedAt: 0, built: false, busy: "", res: null };
   window.__algo = A;
   try { const v = JSON.parse(localStorage.getItem(LS) || "[]"); if (Array.isArray(v)) A.sel = new Set(v.map(String)); } catch (e) { A.sel = new Set(); }
 
@@ -42,7 +42,7 @@
     btn.setAttribute("aria-expanded", A.popOpen ? "true" : "false");
     const pop = byId("alPop");
     pop.classList.toggle("hidden", !A.popOpen);
-    if (!A.popOpen) return;
+    if (!A.popOpen) { syncSheet(); return; }
     const list = accs(), sel = new Set(ids());
     const groups = (A.st && A.st.groups && A.st.groups.length) ? A.st.groups.slice() : [...new Set(list.map((a) => a.group || "未分组"))];
     const stTxt = (a) => { const v = algoOf(a); return v === null ? (a.link === "error" ? "出错" : "离线") : v ? "算法 开" : "算法 关"; };
@@ -51,6 +51,7 @@
       pop.querySelectorAll("input[data-alid]").forEach((cb) => { const v = sel.has(cb.dataset.alid); if (cb.checked !== v) cb.checked = v; });
       const foot = pop.querySelector(".pp-foot span"); if (foot && !foot._hint) foot.textContent = `已选 ${sel.size} / ${list.length} · 自动保存`;
       if (foot) foot._hint = false;
+      syncSheet();
       return;
     }
     pop._k = key;
@@ -61,10 +62,26 @@
       <div class="pp-list">${list.map((a) => `<label><input type="checkbox" data-alid="${h(a.id)}"${sel.has(a.id) ? " checked" : ""}><span class="nm">${h(a.alias || a.login)}</span><span class="lg">${h(a.login)}</span><span class="st${algoOf(a) ? " on" : ""}">${stTxt(a)}</span></label>`).join("")}</div>
       <div class="pp-foot"><span>已选 ${sel.size} / ${list.length} · 自动保存</span><button type="button" data-al="close">完成</button></div>`;
     const l2 = pop.querySelector(".pp-list"); if (l2) l2.scrollTop = top;
+    syncSheet();
+  }
+  function syncSheet() {
+    const pop = byId("alPop"); if (!pop) return;
+    const FS = window.FleetMobileSheet;
+    if (A.popOpen && FS && FS.isMobile()) {
+      FS.open(pop, { onClose: () => { A.popOpen = false; renderPick(); } });
+    } else if (FS) {
+      FS.close(pop);
+    }
   }
   function initPick() {
     const btn = byId("alPick"), pop = byId("alPop");
-    btn.addEventListener("click", (e) => { e.stopPropagation(); A.popOpen = !A.popOpen; pop._k = ""; renderPick(); });
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      A.popOpen = !A.popOpen;
+      if (A.popOpen) A.openedAt = Date.now();
+      pop._k = "";
+      renderPick();
+    });
     pop.addEventListener("click", (e) => {
       e.stopPropagation();
       const b = e.target.closest("button[data-al]"); if (!b) return;
@@ -85,7 +102,14 @@
       if (cb.checked) cur.add(cb.dataset.alid); else cur.delete(cb.dataset.alid);
       setSel(accs().map((a) => a.id).filter((i) => cur.has(i)));
     });
-    document.addEventListener("click", (e) => { if (A.popOpen && !e.target.closest("#alPickWrap")) { A.popOpen = false; renderPick(); } });
+    // 手机用遮罩关；电脑点外面关。打开后 350ms 内忽略，避免同一次触摸立刻关掉。
+    document.addEventListener("click", (e) => {
+      if (!A.popOpen) return;
+      if (Date.now() - (A.openedAt || 0) < 350) return;
+      if (window.FleetMobileSheet && FleetMobileSheet.isMobile()) return;
+      if (e.target.closest("#alPickWrap") || e.target.closest("#alPop")) return;
+      A.popOpen = false; renderPick();
+    });
     document.addEventListener("keydown", (e) => { if (A.popOpen && e.key === "Escape") { A.popOpen = false; renderPick(); btn.focus(); } });
   }
 

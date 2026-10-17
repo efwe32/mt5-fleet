@@ -1,3 +1,66 @@
+/* 手机选账户：底部遮罩弹层（algo / quick 共用）。挂到 body，避免祖先层叠/裁剪；打开后短时忽略点遮罩关闭。 */
+window.FleetMobileSheet = (function () {
+  const MASK_ID = "fleetPickMask";
+  function isMobile() {
+    try { return window.matchMedia("(max-width:900px), (pointer:coarse)").matches; }
+    catch (e) { return Math.min(window.innerWidth || 9999, window.innerHeight || 9999) <= 900; }
+  }
+  function maskEl() {
+    let m = document.getElementById(MASK_ID);
+    if (m) return m;
+    m = document.createElement("div");
+    m.id = MASK_ID;
+    m.className = "fleet-pick-mask";
+    m.setAttribute("aria-hidden", "true");
+    m.addEventListener("click", (e) => {
+      if (e.target !== m) return;
+      if (Date.now() - (m._openedAt || 0) < 350) return;
+      if (typeof m._onClose === "function") m._onClose();
+    });
+    document.body.appendChild(m);
+    return m;
+  }
+  function open(pop, opts) {
+    if (!pop) return;
+    opts = opts || {};
+    if (!pop._homeParent) {
+      pop._homeParent = pop.parentNode;
+      pop._homeNext = pop.nextSibling;
+    }
+    if (pop.parentNode !== document.body) document.body.appendChild(pop);
+    const m = maskEl();
+    const already = pop.classList.contains("fleet-sheet") && m.classList.contains("show");
+    pop.classList.add("fleet-sheet");
+    m._onClose = opts.onClose || null;
+    if (!already) m._openedAt = Date.now();
+    m.classList.add("show");
+    m.setAttribute("aria-hidden", "false");
+    document.body.classList.add("fleet-sheet-open");
+  }
+  function close(pop) {
+    if (pop) {
+      pop.classList.remove("fleet-sheet");
+      if (pop._homeParent && pop.parentNode === document.body) {
+        try {
+          if (pop._homeNext && pop._homeNext.parentNode === pop._homeParent)
+            pop._homeParent.insertBefore(pop, pop._homeNext);
+          else pop._homeParent.appendChild(pop);
+        } catch (e) { pop._homeParent.appendChild(pop); }
+      }
+    }
+    const m = document.getElementById(MASK_ID);
+    if (m) {
+      m.classList.remove("show");
+      m._onClose = null;
+      m.setAttribute("aria-hidden", "true");
+    }
+    // 仅当没有其它 fleet-sheet 时解锁定
+    if (!document.querySelector(".pd-pop.fleet-sheet"))
+      document.body.classList.remove("fleet-sheet-open");
+  }
+  return { isMobile, open, close };
+})();
+
 /* MT5 批量终端 收益台（desk）：浅色实时看板。纯原生 JS + canvas + requestAnimationFrame，离线可用。
    数据：/api/state（app.js 轮询后传进来）+ /api/desk（净值采样、活动流、平仓记录缓存）。 */
 "use strict";

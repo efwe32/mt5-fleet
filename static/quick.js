@@ -17,7 +17,7 @@
   };
   const MODE = { fixed: "固定手数", multiplier: "按账户倍数", equity: "按净值比例" };
 
-  const Q = { st: null, sel: new Set(), sum: null, active: false, timer: 0, inflight: false, gen: 0, busy: "", popOpen: false, built: false, res: null, posAccId: "" };
+  const Q = { st: null, sel: new Set(), sum: null, active: false, timer: 0, inflight: false, gen: 0, busy: "", popOpen: false, openedAt: 0, built: false, res: null, posAccId: "" };
   window.__quick = Q;
   try { const v = JSON.parse(localStorage.getItem(LS.accs) || "[]"); if (Array.isArray(v)) Q.sel = new Set(v.map(String)); } catch (e) { Q.sel = new Set(); }
 
@@ -83,7 +83,7 @@
     btn.setAttribute("aria-expanded", Q.popOpen ? "true" : "false");
     const pop = byId("qpPop");
     pop.classList.toggle("hidden", !Q.popOpen);
-    if (!Q.popOpen) return;
+    if (!Q.popOpen) { syncSheet(); return; }
     const list = accs(), sel = new Set(ids());
     const groups = (Q.st && Q.st.groups && Q.st.groups.length) ? Q.st.groups.slice() : [...new Set(list.map((a) => a.group || "未分组"))];
     const key = JSON.stringify([groups, list.map((a) => [a.id, a.alias, a.login, a.group, a.link])]);
@@ -93,6 +93,7 @@
       list.forEach((a) => { const el = pop.querySelector(`.fl[data-f="${CSS.escape(a.id)}"]`); if (el) { const t = a.link === "online" ? sg(a.floating) : "—"; if (el.textContent !== t) el.textContent = t; el.className = "fl " + cls(a.floating); el.dataset.f = a.id; } });
       const foot = pop.querySelector(".pp-foot span"); if (foot && !foot._hint) foot.textContent = `已选 ${sel.size} / ${list.length} · 自动保存`;
       if (foot) foot._hint = false;
+      syncSheet();
       return;
     }
     pop._k = key;
@@ -103,11 +104,27 @@
       <div class="pp-list">${list.map((a) => `<label><input type="checkbox" data-qpid="${h(a.id)}"${sel.has(a.id) ? " checked" : ""}><span class="nm">${h(a.alias || a.login)}</span><span class="lg">${h(a.login)}</span><span class="st${a.link === "online" ? " on" : ""}">${a.link === "online" ? "在线" : a.link === "error" ? "出错" : "离线"}</span>${fl(a).replace('class="fl', `data-f="${h(a.id)}" class="fl`)}</label>`).join("")}</div>
       <div class="pp-foot"><span>已选 ${sel.size} / ${list.length} · 自动保存</span><button type="button" data-qp="close">完成</button></div>`;
     const l2 = pop.querySelector(".pp-list"); if (l2) l2.scrollTop = top;
+    syncSheet();
+  }
+  function syncSheet() {
+    const pop = byId("qpPop"); if (!pop) return;
+    const FS = window.FleetMobileSheet;
+    if (Q.popOpen && FS && FS.isMobile()) {
+      FS.open(pop, { onClose: () => { Q.popOpen = false; renderPick(); } });
+    } else if (FS) {
+      FS.close(pop);
+    }
   }
   function pickHint(msg) { const f = document.querySelector("#qpPop .pp-foot span"); if (f) { f.textContent = msg; f._hint = true; f.style.color = "#ff6b6b"; setTimeout(() => { f.style.color = ""; }, 2500); } }
   function initPick() {
     const btn = byId("qpPick"), pop = byId("qpPop");
-    btn.addEventListener("click", (e) => { e.stopPropagation(); Q.popOpen = !Q.popOpen; pop._k = ""; renderPick(); });
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      Q.popOpen = !Q.popOpen;
+      if (Q.popOpen) Q.openedAt = Date.now();
+      pop._k = "";
+      renderPick();
+    });
     pop.addEventListener("click", (e) => {
       e.stopPropagation();
       const b = e.target.closest("button[data-qp]"); if (!b) return;
@@ -129,7 +146,13 @@
       if (cb.checked) cur.add(cb.dataset.qpid); else cur.delete(cb.dataset.qpid);
       setSel(accs().map((a) => a.id).filter((i) => cur.has(i)));
     });
-    document.addEventListener("click", (e) => { if (Q.popOpen && !e.target.closest("#qpPickWrap")) { Q.popOpen = false; renderPick(); } });
+    document.addEventListener("click", (e) => {
+      if (!Q.popOpen) return;
+      if (Date.now() - (Q.openedAt || 0) < 350) return;
+      if (window.FleetMobileSheet && FleetMobileSheet.isMobile()) return;
+      if (e.target.closest("#qpPickWrap") || e.target.closest("#qpPop")) return;
+      Q.popOpen = false; renderPick();
+    });
     document.addEventListener("keydown", (e) => { if (Q.popOpen && e.key === "Escape") { Q.popOpen = false; renderPick(); btn.focus(); } });
   }
 

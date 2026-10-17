@@ -149,13 +149,13 @@ details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
 .al-panel .tag{color:#cfcfcf;border-color:#3a3a3a;background:#111}
 .al-panel .tag.ok{color:#3dff5a;border-color:#0d5c0d}
 .al-panel .tag.warn{color:#ff6b6b;border-color:#6e1010}
-@media (max-width:760px){
+@media (max-width:900px){
   .al-panel{padding:14px 12px;color-scheme:dark}
   .al-head{width:100%}
   .al-head .pd-pick,.al-panel .pd-pick{width:100%}
   .al-panel .pd-pickbtn{width:100%;max-width:none;text-align:left;min-height:44px;font-size:15px}
   /* 必须钉在视口内：原先 top:auto 的 fixed 会落到文档坐标（交易页很靠下），手机上看不见选账户弹层 */
-  .al-panel .pd-pop{position:fixed;left:12px;right:12px;top:auto;bottom:16px;width:auto;max-width:none;max-height:min(70vh,560px);overflow:auto;
+  .al-panel .pd-pop{position:fixed;left:12px;right:12px;top:auto;bottom:max(16px, env(safe-area-inset-bottom));width:auto;max-width:none;max-height:min(75vh,560px);overflow:auto;
     background:#0d0d0d !important;border-color:#333 !important;color:#eee !important;z-index:90;
     box-shadow:0 -8px 40px rgba(0,0,0,.55)}
   .al-panel .pd-pop .pp-row button{min-height:40px;font-size:14px;color:#ddd !important;background:#1b1b1b !important}
@@ -168,4 +168,26 @@ details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
   .al-btns #alSum{width:100%;font-size:13px}
   .al-t{font-size:12px}.al-t th,.al-t td{padding:8px 5px}
   .al-panel .tag{font-size:12px;padding:2px 8px}
+}
+
+/* v1.4.9：手机选账户底部遮罩弹层（挂到 body，不依赖祖先选择器） */
+.fleet-pick-mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:200;-webkit-tap-highlight-color:transparent}
+.fleet-pick-mask.show{display:block}
+body.fleet-sheet-open{overflow:hidden;touch-action:none}
+.pd-pop.fleet-sheet{position:fixed !important;left:max(12px, env(safe-area-inset-left)) !important;right:max(12px, env(safe-area-inset-right)) !important;top:auto !important;bottom:max(16px, env(safe-area-inset-bottom)) !important;width:auto !important;max-width:none !important;max-height:min(75vh,560px) !important;overflow:auto !important;z-index:210 !important;background:#0d0d0d !important;border:1px solid #444 !important;border-radius:14px !important;box-shadow:0 -10px 40px rgba(0,0,0,.65),0 0 0 1px rgba(0,188,212,.35) !important;color:#eee !important;padding:12px !important;-webkit-overflow-scrolling:touch}
+.pd-pop.fleet-sheet .pp-row button{background:#1b1b1b !important;border-color:#333 !important;color:#ddd !important;min-height:40px;font-size:14px}
+.pd-pop.fleet-sheet .pp-lab,.pd-pop.fleet-sheet .pp-foot{color:#9a9a9a !important}
+.pd-pop.fleet-sheet label{color:#eee !important;min-height:44px;padding:10px 8px}
+.pd-pop.fleet-sheet label:hover{background:#161616 !important}
+.pd-pop.fleet-sheet label .nm{color:#f2f2f2 !important}
+.pd-pop.fleet-sheet label .lg,.pd-pop.fleet-sheet label .st{color:#9a9a9a !important}
+.pd-pop.fleet-sheet label .st.on{color:#3dff5a !important}
+.pd-pop.fleet-sheet label .fl{color:#aaa !important}
+.pd-pop.fleet-sheet .pp-foot button{background:#00bcd4 !important;color:#001316 !important;min-height:44px;font-size:15px}
+.pd-pop.fleet-sheet .pp-list{max-height:min(50vh,400px);overflow:auto}
+@media (max-width:900px){
+  .qp .pd-pick{width:100%}
+  .qp .pd-pickbtn{width:100%;max-width:none;text-align:left;min-height:44px;font-size:15px}
+  /* CSS 兜底：未挂到 body 时也钉底（JS 会加 fleet-sheet） */
+  .qp .pd-pop{position:fixed;left:12px;right:12px;top:auto;bottom:max(16px, env(safe-area-inset-bottom));width:auto;max-width:none;max-height:min(75vh,560px);overflow:auto;z-index:90}
 }
