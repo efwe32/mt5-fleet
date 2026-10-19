@@ -68,6 +68,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "update_mirror": True,       # github.com 下载慢时改走加速镜像（内容按 sha256 校验）
     "update_auto_check": True,   # 打开网页时检查有没有新版本（只提示，不会自动安装）
     "remote_enabled": False,    # 手机远程访问（默认关）。密码只存摘要 remote_pass_hash
+    "remote_tunnel_token_enc": "",  # Cloudflare 命名隧道令牌（DPAPI/混淆加密；空=临时 trycloudflare 链接）
+    "remote_fixed_url": "",     # 固定访问地址（可选，填了会显示给手机用，例如 https://phone.example.com）
+    "remote_listen_port": 18765,  # 命名隧道时本机远程端口固定，Cloudflare 公共服务要指到这里
     "account_groups": ["主仓", "跟单", "测试"],  # 自定义分组名（账号页管理；账户的 group 字段指向其中一个）
 }
 

@@ -271,9 +271,23 @@ def _run(args, data_dir: Path, hidden: bool, log_path):
     if not args.no_browser:
         _open_browser(url)
 
-    remote_port = port + 1
-    while remote_port < port + 20 and not _port_free(remote_port):
-        remote_port += 1
+    # 命名隧道：用设置里的固定本机端口（默认 18765），方便 Cloudflare 公共服务一直指同一地址
+    # 临时隧道：仍用主端口+1 起顺延，避免和本机面板抢端口
+    if fleet.remote.has_token():
+        prefer = fleet.remote.listen_port_setting()
+        remote_port = prefer
+        if not _port_free(remote_port):
+            remote_port = prefer
+            while remote_port < prefer + 30 and not _port_free(remote_port):
+                remote_port += 1
+            if remote_port != prefer:
+                store.settings["remote_listen_port"] = remote_port
+                store.save_settings()
+                print(f" [提示] 固定远程端口 {prefer} 被占用，已改用 {remote_port}；请把 Cloudflare 公共服务改成 http://127.0.0.1:{remote_port}")
+    else:
+        remote_port = port + 1
+        while remote_port < port + 20 and not _port_free(remote_port):
+            remote_port += 1
     app.state.remote_port = remote_port
     fleet.remote.port = remote_port
     remote_server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=remote_port, log_level="warning"))
