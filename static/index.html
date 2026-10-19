@@ -364,11 +364,24 @@
         </div>
         <div class="panel" id="remotePanel">
           <h2>远程访问（手机）</h2>
-          <p class="small muted" style="margin:4px 0 12px">在别的地方用手机浏览器打开下面的加密地址（https），输入远程密码后，可以看收益、快捷交易、登录、分发 EA 和报价，和这台电脑上的页面一样。默认关闭。这台电脑自己的浏览器不用输这个密码。交易账户的密码不会出现在手机页面上。连续输错 5 次会锁定 10 分钟。关掉开关就断开。</p>
+          <p class="small muted" style="margin:4px 0 12px">在别的地方用手机浏览器打开加密地址（https），输入远程密码后，可以看收益、快捷交易、登录、分发 EA 和报价。默认关闭。这台电脑自己的浏览器不用输这个密码。交易账户的密码不会出现在手机页面上。连续输错 5 次会锁定 10 分钟。关掉开关就断开。</p>
           <div class="grid2">
             <label class="field"><span>远程访问</span><select class="input" id="setRemote"><option value="0">关</option><option value="1">开</option></select></label>
             <label class="field"><span>远程密码（至少 6 位，留空表示不修改）</span><input class="input" id="setRemotePw" type="password" autocomplete="new-password" placeholder="设置或修改远程密码"></label>
           </div>
+          <details style="margin-top:14px">
+            <summary class="small" style="cursor:pointer">固定手机链接（可选，推荐）</summary>
+            <p class="small muted" style="margin:8px 0 10px">不填令牌时，每次开机/更新会得到一个新的临时地址（随机的 trycloudflare 链接）。若希望手机书签一直能用：到 Cloudflare 免费注册 → 「零信任」→ 「网络」→ 「隧道」→ 创建隧道 → 复制安装令牌粘贴到下面；在隧道的「公共服务」里把网址指到本机端口（保存后下面会显示端口号，一般是 <span class="num">18765</span>）。程序更新不会改这个固定域名。</p>
+            <div class="grid2">
+              <label class="field"><span>固定链接令牌（Cloudflare 隧道令牌，留空=继续用临时链接）</span><input class="input" id="setRemoteTok" type="password" autocomplete="off" placeholder="粘贴令牌；已保存时这里显示提示，不必重填"></label>
+              <label class="field"><span>固定访问地址（可选，如 https://phone.你的域名.com）</span><input class="input" id="setRemoteFixed" type="url" placeholder="填了会显示给手机用；也可只在 Cloudflare 看主机名"></label>
+            </div>
+            <div class="grid2" style="margin-top:8px">
+              <label class="field"><span>本机远程端口（命名隧道时固定，改后需重启本程序）</span><input class="input num" id="setRemotePort" inputmode="numeric" placeholder="18765"></label>
+              <label class="field"><span>清除已保存的令牌</span><select class="input" id="setRemoteTokClear"><option value="0">否</option><option value="1">是（下次保存后改回临时链接）</option></select></label>
+            </div>
+            <p class="small muted" id="remoteTokHint" style="margin:8px 0 0"></p>
+          </details>
           <p class="small" id="remoteInfo" style="margin:12px 0 0">未开启</p>
           <div class="row" style="margin-top:12px"><button class="btn primary" data-act="save-settings">保存设置</button></div>
         </div>

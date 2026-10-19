@@ -618,6 +618,28 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
             if len(pw) < 6:
                 raise HTTPException(400, "远程密码至少 6 位")
             fleet.remote.set_password(pw)
+        # 固定链接令牌：有新值就覆盖；remote_tunnel_token_clear=true 则清除；都不传则不改
+        if body.get("remote_tunnel_token_clear"):
+            fleet.remote.set_tunnel_token(None, clear=True)
+        elif "remote_tunnel_token" in body:
+            tok = body.get("remote_tunnel_token")
+            if isinstance(tok, str) and tok.strip():
+                if len(tok.strip()) < 20:
+                    raise HTTPException(400, "固定链接令牌太短，请从 Cloudflare 控制台复制完整的隧道令牌")
+                fleet.remote.set_tunnel_token(tok.strip())
+        if "remote_fixed_url" in body:
+            fu = str(body.get("remote_fixed_url") or "").strip()
+            if fu and not re.fullmatch(r"https://\S+", fu):
+                raise HTTPException(400, "固定访问地址需要以 https:// 开头（例如 https://phone.你的域名.com）")
+            s["remote_fixed_url"] = fu
+        if "remote_listen_port" in body and body["remote_listen_port"] not in (None, ""):
+            try:
+                rp = int(body["remote_listen_port"])
+            except (TypeError, ValueError):
+                raise HTTPException(400, "本机远程端口需为整数")
+            if not 1024 <= rp <= 65535:
+                raise HTTPException(400, "本机远程端口需在 1024～65535")
+            s["remote_listen_port"] = rp
         if "remote_enabled" in body:
             on = bool(body.get("remote_enabled"))
             if on and not fleet.remote.has_password():
@@ -625,12 +647,16 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
             s["remote_enabled"] = on
         s.pop("alert_loss", None)  # v1.4.5 已取消浮亏警报
         fleet.store.first_launch = False
+        # 改令牌/端口后必须先停再建，临时链接与固定链接不要混跑
+        fleet.remote.stop()
         fleet.store.save_settings()
         if s.get("remote_enabled") and fleet.remote.has_password():
-            fleet.remote.open()
-        else:
-            fleet.remote.stop()
-        return {k: v for k, v in s.items() if k != "remote_pass_hash"}
+            # 命名隧道时端口可能刚改：尽量用设置里的固定端口（已在启动时绑定；运行中改端口需重启程序才生效）
+            if fleet.remote.port:
+                fleet.remote.open()
+        out = {k: v for k, v in s.items() if k not in ("remote_pass_hash", "remote_tunnel_token_enc")}
+        out["remote_tunnel_token_set"] = fleet.remote.has_token()
+        return out
 
     # ---------- 工具 ----------
     @app.post("/api/tools/check_path")

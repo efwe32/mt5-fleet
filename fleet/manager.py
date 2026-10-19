@@ -1621,7 +1621,7 @@ class Fleet:
                     "ownedTerminal": bool(self.registry.get(a["terminal_path"])) if a["terminal_path"] else False,
                 })
                 accounts.append(d)
-        settings = {k: v for k, v in self.store.settings.items() if not k.startswith("_") and k != "remote_pass_hash"}
+        settings = {k: v for k, v in self.store.settings.items() if not k.startswith("_") and k not in ("remote_pass_hash", "remote_tunnel_token_enc")}
         return {"accounts": accounts, "settings": settings, "banner": self.banner, "mock": self.mock,
                 "quote": self.quote, "remote": self.remote.public(),
                 "clock": {"unix": int(self.clock.get("unix") or 0),
