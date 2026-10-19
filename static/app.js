@@ -125,11 +125,19 @@ function renderBusy() {
 function renderRemote(r) {
   const el = $("#remoteInfo"); if (!el || !r) return;
   let text = "未开启";
-  if (r.enabled && r.online && r.url) text = "已连接 " + r.url;
+  if (r.enabled && r.online && r.url) text = (r.mode === "named" ? "固定链接已连接 " : "已连接 ") + r.url;
+  else if (r.enabled && r.online && r.mode === "named") text = r.hint || ("固定链接已连接（本机端口 " + (r.listenPort || r.port || "") + "）");
   else if (r.enabled && r.error) text = r.error;
-  else if (r.enabled) text = "正在连接加密通道…";
+  else if (r.enabled) text = r.mode === "named" ? "正在连接固定链接隧道…" : "正在连接加密通道…";
   else if (r.hasPassword) text = "已设置密码，开关是关的";
   if (el.textContent !== text) el.textContent = text;
+  const hint = $("#remoteTokHint");
+  if (hint) {
+    const port = r.listenPort || r.port || 18765;
+    let h = r.tokenSaved ? "令牌状态：已保存（不会显示原文）。" : "令牌状态：未保存，当前用临时链接。";
+    h += " Cloudflare 公共服务请填写：http://127.0.0.1:" + port;
+    if (hint.textContent !== h) hint.textContent = h;
+  }
 }
 
 function renderQuote(q) {
@@ -861,7 +869,12 @@ async function loadLogs() {
 // ---------------- 设置页 ----------------
 function fillSettings() {
   const s = ui.state?.settings; if (!s) return;
-  $("#setRemote").value = s.remote_enabled ? "1" : "0"; $("#setRemotePw").value = ""; $("#setMaxLots").value = s.max_lots; $("#setMaxTotal").value = s.max_total_lots;
+  $("#setRemote").value = s.remote_enabled ? "1" : "0"; $("#setRemotePw").value = "";
+  const tok = $("#setRemoteTok"); if (tok) { tok.value = ""; tok.placeholder = (ui.state?.remote?.tokenSaved || s.remote_tunnel_token_set) ? "已保存令牌（留空不修改）" : "粘贴令牌；已保存时这里显示提示，不必重填"; }
+  const fu = $("#setRemoteFixed"); if (fu) fu.value = s.remote_fixed_url || "";
+  const rp = $("#setRemotePort"); if (rp) rp.value = s.remote_listen_port || 18765;
+  const tc = $("#setRemoteTokClear"); if (tc) tc.value = "0";
+  $("#setMaxLots").value = s.max_lots; $("#setMaxTotal").value = s.max_total_lots;
   $("#setDev").value = s.deviation; $("#setPoll").value = s.poll_interval; $("#setGroups").value = (s.scale_groups || []).join(",");
   $("#setCloseTerm").value = s.close_terminal_on_disconnect ? "1" : "0"; $("#setIni").value = s.ini_encoding || "utf-16";
   $("#setCloseExit").value = s.close_terminals_on_exit ? "1" : "0"; $("#setAlgo").value = s.auto_enable_algo ? "1" : "0"; $("#rootPath").textContent = ui.state.terminalsRoot;
@@ -880,7 +893,12 @@ function fillSettings() {
 }
 async function saveSettings(extra) {
   const body = extra || {
-    remote_enabled: $("#setRemote").value === "1", remote_password: $("#setRemotePw").value, max_lots: $("#setMaxLots").value, max_total_lots: $("#setMaxTotal").value, deviation: $("#setDev").value,
+    remote_enabled: $("#setRemote").value === "1", remote_password: $("#setRemotePw").value,
+    remote_tunnel_token: ($("#setRemoteTok") && $("#setRemoteTok").value) || "",
+    remote_tunnel_token_clear: $("#setRemoteTokClear") && $("#setRemoteTokClear").value === "1",
+    remote_fixed_url: ($("#setRemoteFixed") && $("#setRemoteFixed").value.trim()) || "",
+    remote_listen_port: ($("#setRemotePort") && $("#setRemotePort").value) || 18765,
+    max_lots: $("#setMaxLots").value, max_total_lots: $("#setMaxTotal").value, deviation: $("#setDev").value,
     poll_interval: $("#setPoll").value, scale_groups: $("#setGroups").value,
     close_terminal_on_disconnect: $("#setCloseTerm").value === "1", close_terminals_on_exit: $("#setCloseExit").value === "1", auto_enable_algo: $("#setAlgo").value === "1", ini_encoding: $("#setIni").value,
     template_dir: $("#setTpl").value.trim(), allow_dll_import: $("#setDll").value === "1",
