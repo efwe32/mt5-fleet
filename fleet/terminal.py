@@ -226,7 +226,7 @@ def _ini_lines(creds: dict | None, startup: dict | None, allow_dll: bool, algo: 
         # 登录信息只写进这个临时文件，终端启动、登录完成后立刻抹掉删除
         lines += ["[Common]", f"Login={creds['login']}", f"Password={creds['password']}", f"Server={creds['server']}",
                   "KeepPrivate=1", "NewsEnable=0", "CertInstall=0", ""]
-    # Enabled = 工具栏「算法交易」按钮。用户在交易页手动关掉的账户，后台重新打开终端时保持关闭
+    # Enabled = 工具栏「算法交易」按钮。登录默认关闭时写 0；分发 EA / 用户设置打开时写 1
     lines += ["[Experts]", "AllowLiveTrading=1", f"AllowDllImport={1 if allow_dll else 0}", f"Enabled={1 if algo else 0}",
               "Account=0", "Profile=0"]
     if startup:
@@ -256,7 +256,7 @@ def write_start_ini(terminal_path: str, ex5_name: str, symbol: str, timeframe: s
 
 def write_base_ini(terminal_path: str, encoding: str = "utf-16", creds: dict | None = None,
                    allow_dll: bool = False) -> Path:
-    """普通启动用的配置：打开该终端的算法交易（Python 发单需要），可附带登录信息。"""
+    """普通启动用的配置（默认 algo=True）；登录路径由 worker 按设置传入 Enabled。"""
     return write_config_ini(terminal_path, creds, None, allow_dll, encoding)
 
 

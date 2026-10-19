@@ -382,7 +382,7 @@ function renderAccounts() {
     a.strategies.map((s) => s.running), a.terminal?.trade_allowed, a.ownedTerminal, a.has_password, ui.selected.has(a.id), a.terminal_path, a.lot_multiplier, a.symbol_suffix]);
   once("acc", [view, ui.search, ui.group], () => {
     if (!list.length) {
-      $("#accList").innerHTML = `<div class="empty"><h2>${st.accounts.length ? "没有匹配的账户" : "还没有账户"}</h2><p>${st.accounts.length ? "换个关键词，或点「添加并登录」。" : "点「添加并登录」，填账号、交易密码、服务器即可：程序会自动复制一份独立的 MT5、启动、登录并打开算法交易。也可以一次粘贴多个账户。"}</p><div class="row"><button class="btn primary" data-act="quick">添加并登录</button></div></div>`;
+      $("#accList").innerHTML = `<div class="empty"><h2>${st.accounts.length ? "没有匹配的账户" : "还没有账户"}</h2><p>${st.accounts.length ? "换个关键词，或点「添加并登录」。" : "点「添加并登录」，填账号、交易密码、服务器即可：程序会自动复制一份独立的 MT5、启动并登录（算法交易默认关闭，交易页可一键开启）。也可以一次粘贴多个账户。"}</p><div class="row"><button class="btn primary" data-act="quick">添加并登录</button></div></div>`;
       return;
     }
     const allOn = list.every((a) => ui.selected.has(a.id));
@@ -474,7 +474,7 @@ function quickForm() {
   let mode = "one";
   modal({
     title: "添加并登录", wide: true,
-    desc: `填好账号、交易密码、服务器后，程序会自动完成：<div class="flow" style="margin-top:6px"><b>创建副本</b>→<b>启动终端</b>→<b>登录</b>→<b>算法交易已开启</b></div>`,
+    desc: `填好账号、交易密码、服务器后，程序会自动完成：<div class="flow" style="margin-top:6px"><b>创建副本</b>→<b>启动终端</b>→<b>登录</b>→<b>算法交易保持关闭</b></div>`,
     body: `<div class="seg" role="tablist"><button type="button" class="on" data-qmode="one">单个账户</button><button type="button" data-qmode="many">批量粘贴</button></div>
       <div id="qOne"><div class="grid2">
         <label class="field"><span>账号</span><input class="input num" name="login" inputmode="numeric" autocomplete="off" placeholder="例如 51002811"></label>
@@ -864,7 +864,7 @@ function fillSettings() {
   $("#setRemote").value = s.remote_enabled ? "1" : "0"; $("#setRemotePw").value = ""; $("#setMaxLots").value = s.max_lots; $("#setMaxTotal").value = s.max_total_lots;
   $("#setDev").value = s.deviation; $("#setPoll").value = s.poll_interval; $("#setGroups").value = (s.scale_groups || []).join(",");
   $("#setCloseTerm").value = s.close_terminal_on_disconnect ? "1" : "0"; $("#setIni").value = s.ini_encoding || "utf-16";
-  $("#setCloseExit").value = s.close_terminals_on_exit ? "1" : "0"; $("#setAlgo").value = s.auto_enable_algo === false ? "0" : "1"; $("#rootPath").textContent = ui.state.terminalsRoot;
+  $("#setCloseExit").value = s.close_terminals_on_exit ? "1" : "0"; $("#setAlgo").value = s.auto_enable_algo ? "1" : "0"; $("#rootPath").textContent = ui.state.terminalsRoot;
   $("#setTpl").value = s.template_dir || ""; $("#setDll").value = s.allow_dll_import ? "1" : "0";
   $("#setLoginConc").value = s.login_concurrency || 3; $("#setDistConc").value = s.dist_concurrency || 2;
   $("#setDefTf").innerHTML = (ui.state.timeframes || []).map((t) => `<option>${t}</option>`).join("");
