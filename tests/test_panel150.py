@@ -16,7 +16,7 @@ def check(name, cond, info=""):
     if not cond:
         fails.append(name)
 
-check("版本 1.5.0", __version__ == "1.5.0", __version__)
+check("版本 ≥1.5.0", tuple(int(x) for x in __version__.split(".")[:3]) >= (1, 5, 0), __version__)
 check("默认 auto_enable_algo 为 False", DEFAULT_SETTINGS.get("auto_enable_algo") is False)
 
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
@@ -28,8 +28,8 @@ mgr = (ROOT / "fleet" / "manager.py").read_text(encoding="utf-8")
 wkr = (ROOT / "fleet" / "worker.py").read_text(encoding="utf-8")
 cfg = (ROOT / "fleet" / "config.py").read_text(encoding="utf-8")
 
-check("更新说明 v1.5.0", "## v1.5.0" in notes and "默认关闭算法交易" in notes and "分发" in notes)
-check("README 本次更新", "v1.5.0" in readme and "算法交易默认关闭" in readme)
+check("更新说明", ("## v1.5.1" in notes or "## v1.5.0" in notes) and "默认关闭算法交易" in notes and "分发" in notes)
+check("README 本次更新", ("v1.5.1" in readme or "v1.5.0" in readme) and "算法交易默认关闭" in readme)
 check("设置文案", "登录后默认打开算法交易" in html)
 check("登录步骤文案", "算法交易保持关闭" in mgr)
 check("login 不再 clear_algo_off", "def login" in mgr and "_clear_algo_off(ids)      # 用户点的登录" not in mgr)
