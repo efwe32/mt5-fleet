@@ -49,7 +49,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "ini_encoding": "utf-16",   # MT5 启动配置文件编码
     "close_terminal_on_disconnect": False,  # 断开时是否关闭（本程序启动的）终端
     "close_terminals_on_exit": True,
-    "auto_enable_algo": True,               # 本程序启动终端时自动打开它的算法交易
+    "auto_enable_algo": False,              # 登录/开机后是否默认打开算法交易（否=保持关闭；分发 EA 仍会打开）
     "template_dir": "",          # 模板 MT5 目录（空 = 自动在程序目录里找）；只读取，不会改动
     "allow_dll_import": False,   # 启动配置里的「允许 DLL 导入」
     "login_concurrency": 3,      # 一键登录同时处理的账户数
@@ -89,6 +89,10 @@ class Store:
         # v1.4.7：账户上的锁单冷却字段在 normalize 时已不再写入；旧台账里残留的会在下次 save 清掉
         self.settings.pop("terminal_root", None)
         self.settings.pop("dry_run", None)   # 旧版本的 dry_run 开关已取消：所有操作都直接实盘发送
+        # v1.5.0：登录/开机默认关闭算法交易（一次性把旧安装的「是」改成「否」；之后用户可在设置里改回）
+        if not self.settings.get("_v150_algo_off_default"):
+            self.settings["auto_enable_algo"] = False
+            self.settings["_v150_algo_off_default"] = True
         raw_accs = self._read(self.accounts_path, {"accounts": []}).get("accounts", [])
         self.accounts: list[dict] = [self._normalize(a) for a in raw_accs]
         self.save_settings()

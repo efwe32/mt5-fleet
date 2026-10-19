@@ -30,7 +30,7 @@ EQ_STEP = 5            # 净值采样间隔（秒）
 EQ_MAX = 13 * 3600 // EQ_STEP + 10   # 保留 13 小时
 DEALS_EVERY = 60       # 平仓记录刷新间隔（秒）
 # 网页上每个账户的步骤条
-LOGIN_STEPS = [("copy", "创建副本"), ("launch", "启动终端"), ("login", "登录"), ("algo", "算法交易已开启")]
+LOGIN_STEPS = [("copy", "创建副本"), ("launch", "启动终端"), ("login", "登录"), ("algo", "算法交易保持关闭")]
 DIST_STEPS = [("login", "登录"), ("files", "复制 EA 文件"), ("restart", "重启终端"), ("attach", "挂载 EA"), ("verify", "校验")]
 STOP_STEPS = [("restart", "关闭终端"), ("remove", "从图表移除 EA"), ("attach", "重新打开终端")]
 # 交易页快捷面板：动作 → (名称, 工作进程命令)
@@ -243,6 +243,11 @@ class Fleet:
                 self.log(acc_id, "关闭终端", True, "已关闭本程序启动的终端")
             elif t == "log":
                 self.log(acc_id, ev.get("action", ""), ev.get("ok", True), ev.get("message", ""))
+            elif t == "algo_off":
+                a = self.store.get(acc_id)
+                if a is not None and bool(a.get("algo_off")) != bool(ev.get("algo_off", True)):
+                    a["algo_off"] = bool(ev.get("algo_off", True))
+                    self.store.save_accounts()
             elif t == "progress":
                 self._prog_step(acc_id, ev.get("key", ""), ev.get("state", ""), ev.get("msg", ""))
             elif t == "exit":
@@ -812,7 +817,7 @@ class Fleet:
 
     def login(self, ids: list[str], title: str = "批量登录"):
         self._prog_begin(title, ids, LOGIN_STEPS)
-        self._clear_algo_off(ids)      # 用户点的登录：算法交易恢复成开
+        # v1.5.0：普通登录不再清掉 algo_off，登录后默认保持算法交易关闭（分发仍会 _clear_algo_off）
         try:
             results = self._login_ids(ids, explicit=True)
         finally:
@@ -820,7 +825,7 @@ class Fleet:
         return self._summary(title, results, "登录")
 
     def quick_add(self, rows: list[dict]) -> dict:
-        """添加并登录：新账户加入台账（已存在的更新密码），然后自动 创建副本 → 启动终端 → 登录 → 打开算法交易。"""
+        """添加并登录：新账户加入台账（已存在的更新密码），然后自动 创建副本 → 启动终端 → 登录（算法交易默认关闭）。"""
         ids, errors, added, updated, good = [], [], 0, 0, []
         for r in rows:
             login = str(r.get("login") or "").strip()
@@ -1616,7 +1621,7 @@ class Fleet:
                     "ownedTerminal": bool(self.registry.get(a["terminal_path"])) if a["terminal_path"] else False,
                 })
                 accounts.append(d)
-        settings = {k: v for k, v in self.store.settings.items() if k != "remote_pass_hash"}
+        settings = {k: v for k, v in self.store.settings.items() if not k.startswith("_") and k != "remote_pass_hash"}
         return {"accounts": accounts, "settings": settings, "banner": self.banner, "mock": self.mock,
                 "quote": self.quote, "remote": self.remote.public(),
                 "clock": {"unix": int(self.clock.get("unix") or 0),

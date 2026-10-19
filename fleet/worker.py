@@ -185,7 +185,7 @@ class Worker:
         self.progress("login", "ok", f"登录成功 · {acc.get('company', '')} · {acc.get('server', '')}")
         snap, pref_note = self.apply_algo_pref(snap)
         if self.acc.get("algo_off") and not (snap.get("terminal") or {}).get("trade_allowed"):
-            algo_ok, algo_msg = True, "算法交易按你在交易页的设置保持关闭（交易页可一键开启）"
+            algo_ok, algo_msg = True, pref_note or "算法交易保持关闭（默认；交易页可一键开启）"
         else:
             algo_ok, algo_msg = self.check_algo(snap)
         if pref_note:
@@ -317,25 +317,59 @@ class Worker:
                               message=f"交易后把算法交易关回去失败：{msg2}（请在该终端工具栏手动关掉）")
 
     def apply_algo_pref(self, snap: dict) -> tuple[dict, str]:
-        """登录 / 重连后：用户在交易页关掉的账户保持关闭；用户点的登录或分发，没开就打开。"""
+        """登录 / 重连后处理算法交易。
+        - 默认（设置「登录后默认打开」为否）：关掉并标记 algo_off，避免后台重连又打开。
+        - 设置里打开且用户点的登录、且未标记关闭：打开。
+        - 分发 EA（_deploy_algo）：始终打开，EA 要跑。
+        """
         explicit, self._explicit = self._explicit, False
+        deploy = bool(getattr(self, "_deploy_algo", False))
+        self._deploy_algo = False
         on_now = bool((snap.get("terminal") or {}).get("trade_allowed"))
         note = ""
-        if self.acc.get("algo_off") and on_now:
-            ok, msg, _ = self.set_algo(False)
-            note = "按你的设置保持关闭算法交易：" + msg
-            self.emit(type="log", action="算法交易", ok=ok, message=note)
-        elif explicit and not on_now and not self.acc.get("algo_off") and self.settings.get("auto_enable_algo", True):
-            ok, msg, _ = self.set_algo(True)
-            note = ("已自动打开算法交易" if ok else "自动打开算法交易失败：" + msg)
-            self.emit(type="log", action="算法交易", ok=ok, message=note)
+        auto = bool(self.settings.get("auto_enable_algo", False))
+        changed = False
+
+        if deploy:
+            # 分发：清掉关闭标记并打开算法交易
+            if self.acc.get("algo_off"):
+                self.acc["algo_off"] = False
+                self.emit(type="algo_off", algo_off=False)
+            if not on_now:
+                ok, msg, _ = self.set_algo(True)
+                note = ("已自动打开算法交易（分发）" if ok else "自动打开算法交易失败：" + msg)
+                self.emit(type="log", action="算法交易", ok=ok, message=note)
+                changed = True
+            else:
+                note = "算法交易已开启（分发）"
+        elif explicit and auto and not self.acc.get("algo_off"):
+            # 用户在设置里打开了「登录后默认打开算法交易」
+            if not on_now:
+                ok, msg, _ = self.set_algo(True)
+                note = ("已自动打开算法交易" if ok else "自动打开算法交易失败：" + msg)
+                self.emit(type="log", action="算法交易", ok=ok, message=note)
+                changed = True
         else:
+            # 开机 / 登录 / 后台重连：默认关闭
+            if on_now:
+                ok, msg, _ = self.set_algo(False)
+                note = ("算法交易已关闭（默认）" if ok else "关闭算法交易失败：" + msg)
+                self.emit(type="log", action="算法交易", ok=ok, message=note)
+                changed = True
+            else:
+                note = "算法交易保持关闭（默认）"
+            if not self.acc.get("algo_off"):
+                self.acc["algo_off"] = True
+                self.emit(type="algo_off", algo_off=True)
+
+        if not changed and not note:
             return snap, ""
-        try:
-            snap = self.snapshot()
-            self.status(snap)
-        except Exception:
-            pass
+        if changed:
+            try:
+                snap = self.snapshot()
+                self.status(snap)
+            except Exception:
+                pass
         return snap, note
 
     def cmd_algo(self, p: dict):
@@ -429,9 +463,14 @@ class Worker:
         enc = self.settings.get("ini_encoding", "utf-16")
         dll = bool(self.settings.get("allow_dll_import", False))
         ini = None
-        if creds or startup or self.settings.get("auto_enable_algo", True):
+        # 分发带 startup：始终 Enabled=1；普通登录/启动：仅当设置「登录后默认打开」且未标记关闭
+        if startup is not None:
+            want_algo = True
+        else:
+            want_algo = bool(self.settings.get("auto_enable_algo", False)) and not self.acc.get("algo_off")
+        if creds or startup or want_algo:
             try:
-                ini = T.write_config_ini(path, creds, startup, dll, enc, algo=not self.acc.get("algo_off"))
+                ini = T.write_config_ini(path, creds, startup, dll, enc, algo=want_algo)
             except Exception as e:
                 return self._fail_step("launch", f"写启动配置失败：{e}")
         self._ini = ini
@@ -1093,7 +1132,8 @@ class Worker:
             prof = None
             perr = str(e)
         marks = T.log_marks(path)
-        self._explicit = True       # 分发是用户点的：重新登录后算法交易没开就打开
+        self._explicit = True       # 分发是用户点的
+        self._deploy_algo = True    # 分发后务必打开算法交易（EA 要跑），不受「登录默认关闭」影响
         if prof is None:
             # 写图表文件失败：退回 MT5 启动配置挂载（这种方式终端重启后 EA 不会自动恢复）
             ok, msg = self._relaunch({"fileName": fname, "symbol": symbol, "timeframe": tf, "preset": use_preset})
@@ -1117,6 +1157,7 @@ class Worker:
                     pass
                 marks = T.log_marks(path)
                 self._explicit = True
+                self._deploy_algo = True
                 ok, msg = self._relaunch({"fileName": fname, "symbol": symbol, "timeframe": tf, "preset": use_preset})
                 if not ok:
                     return self._step_fail("verify", msg)
