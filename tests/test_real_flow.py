@@ -140,8 +140,8 @@ try:
         check(f"{lg} 副本带模板的 servers.dat", (d / "Config" / "servers.dat").read_bytes().startswith(b"TEMPLATE"))
         seen = sorted(d.glob("fake_seen_*.ini"))
         txt = u16(seen[0]) if seen else ""
-        check(f"{lg} 启动配置含登录信息和算法交易", all(k in txt for k in (f"Login={lg}", "Password=", "Server=Real-Server", "KeepPrivate=1",
-                                                                       "NewsEnable=0", "[Experts]", "AllowLiveTrading=1", "Enabled=1", "AllowDllImport=0")), txt.replace("\r\n", " | ")[:160])
+        check(f"{lg} 启动配置含登录信息且算法交易默认关", all(k in txt for k in (f"Login={lg}", "Password=", "Server=Real-Server", "KeepPrivate=1",
+                                                                       "NewsEnable=0", "[Experts]", "AllowLiveTrading=1", "Enabled=0", "AllowDllImport=0")), txt.replace("\r\n", " | ")[:160])
         check(f"{lg} 含密码的启动配置已删除", not list(d.glob("fleet_*.ini")), [p.name for p in d.glob("fleet_*.ini")])
         ch = list_charts(tpath(lg))
         check(f"{lg} 登录后只开一个 USDJPYc M15 图表", [(x["symbol"], x["period"], x["experts"]) for x in ch] == [("USDJPYc", (0, 15), [])], ch)
