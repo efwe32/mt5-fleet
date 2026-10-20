@@ -729,7 +729,7 @@ function distForm(file) {
   const s0 = st.settings;
   modal({
     title: "分发 EA", wide: true,
-    desc: `<div class="warnbar" style="margin:0 0 8px">⚠ <b>实盘</b>：分发后 EA 会在所选账户上自动交易。</div>点「分发」后每个账户自动：<div class="flow" style="margin-top:6px"><b>登录</b>→<b>复制 EA 文件</b>→<b>重启终端</b>→<b>挂载 EA</b>→<b>校验</b></div>`,
+    desc: `<div class="warnbar" style="margin:0 0 8px">⚠ <b>实盘</b>：分发后 EA 会在所选账户上自动交易。</div>点「分发」后每个账户自动：<div class="flow" style="margin-top:6px"><b>登录</b>→<b>清除旧策略</b>→<b>复制 EA 文件</b>→<b>重启终端</b>→<b>挂载 EA</b>→<b>校验</b></div><p class="small muted" style="margin:8px 0 0">会先清除该账户上旧策略再挂新 EA（台账与图表一并换掉）。</p>`,
     body: `<div class="grid2">
         <label class="field"><span>EA（.ex5）</span><select class="input" id="dFile">${(ex5.length ? ex5 : [fileSel]).map((n) => `<option ${n === fileSel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
         <label class="field"><span>参数文件（可选，.set）</span><select class="input" id="dPreset">${setOpts(ui.distPreset || "", "不用参数文件（EA 默认参数）")}</select></label>
@@ -739,7 +739,6 @@ function distForm(file) {
         <label class="field"><span>魔术号参数名（可选，填了才会写进每个账户的参数文件）</span><input class="input num" id="dMagicParam" placeholder="例如 MagicNumber"></label>
       </div>
       <div class="row"><label class="check"><input type="checkbox" id="dStep" checked>每个账户魔术号自动 +1</label>
-        <label class="check"><input type="checkbox" id="dReplace" checked>替换该账户上已有的同名 EA（避免重复挂载）</label>
         <label class="check">同时处理 <select class="input" id="dConc" style="width:72px;height:36px">${[1, 2, 3, 4].map((n) => `<option ${n === (s0.dist_concurrency || 2) ? "selected" : ""}>${n}</option>`).join("")}</select> 个账户</label></div>
       <div><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="small muted">账户（<b id="dCount" class="num">0</b> 个）</span>
         <span class="row"><button class="btn sm" type="button" data-dpick="online">全部在线</button><button class="btn sm" type="button" data-dpick="all">全部</button>${groups.map((g) => `<button class="btn sm" type="button" data-dpick="g:${esc(g)}">${esc(g)}</button>`).join("")}<button class="btn sm ghost" type="button" data-dpick="none">清空</button></span></div>
@@ -756,7 +755,7 @@ function distForm(file) {
         if (!/^\d+$/.test(strategy.magic)) { toast("魔术号需为整数", true); return true; }
         const group_presets = {}; $$("[data-gset]", root).forEach((el) => { if (el.value) group_presets[el.dataset.gset] = el.value; });
         const body = { ids: accs.filter((a) => pick.has(a.id)).map((a) => a.id), strategy, group_presets, magic_step: $("#dStep", root).checked ? 1 : 0,
-          magic_param: $("#dMagicParam", root).value.trim(), replace: $("#dReplace", root).checked, concurrency: Number($("#dConc", root).value) };
+          magic_param: $("#dMagicParam", root).value.trim(), replace: true, concurrency: Number($("#dConc", root).value) };
         ui.distFile = strategy.fileName; ui.distPreset = strategy.preset;
         startProgress("分发策略", "/api/strategy/distribute", body);
         return true;
@@ -771,7 +770,7 @@ function distForm(file) {
         const keep = {}; $$("[data-gset]", root).forEach((el) => { keep[el.dataset.gset] = el.value; });
         $("#dGroups", root).innerHTML = gs.length > 1 && sets.length ? `<div class="small muted" style="margin-bottom:6px">按分组使用不同参数文件（例如不同手数），不选 = 用上面的参数文件</div><div class="grid2">${gs.map((g) => `<label class="field"><span>分组「${esc(g)}」</span><select class="input" data-gset="${esc(g)}">${setOpts(keep[g] || "", "同上")}</select></label>`).join("")}</div>` : "";
         const m = Number($("#dMagic", root).value) || 0, step = $("#dStep", root).checked;
-        $("#dSummary", root).textContent = chosen.length ? `将分发到 ${chosen.length} 个账户${off ? `（其中 ${off} 个未登录，会先自动登录）` : ""}；魔术号 ${step && chosen.length > 1 ? `${m} ~ ${m + chosen.length - 1}` : m}。每个终端会关闭并重新打开一次（约 10~30 秒）。` : "还没有选择账户。";
+        $("#dSummary", root).textContent = chosen.length ? `将分发到 ${chosen.length} 个账户${off ? `（其中 ${off} 个未登录，会先自动登录）` : ""}；魔术号 ${step && chosen.length > 1 ? `${m} ~ ${m + chosen.length - 1}` : m}。会先清除这些账户上的旧策略再挂新 EA；每个终端关闭并重新打开一次（约 10~30 秒）。` : "还没有选择账户。";
       };
       root.addEventListener("change", (e) => { const id = e.target.dataset?.dacc; if (id) { e.target.checked ? pick.add(id) : pick.delete(id); } sync(); });
       root.addEventListener("input", (e) => { if (e.target.id === "dMagic") sync(); });
@@ -1107,7 +1106,7 @@ document.addEventListener("click", async (e) => {
     const name = d.libdel;
     return modal({
       title: `删除策略文件「${esc(name)}」？`,
-      desc: `将从本机 <span class="num">data/ea_library</span> 删除这个文件。终端里已经复制过去的 .ex5 / .set、账户台账、桌面 MT5 都不会动。<br><br>若还有账户正在运行或台账里挂着同名策略，会拒绝删除，请先「停止 / 移除」。`,
+      desc: `将从本机 <span class="num">data/ea_library</span> 删除这个文件，并自动从账户台账清掉同名策略记录；在线账户会尝试从图表卸下。<br><br>不会删除终端目录里已复制的文件，也不碰桌面 MT5。若个别终端仍挂着同名 EA，可稍后「一键停止/移除」或重启终端。`,
       actions: [
         { label: "取消" },
         { label: "删除", tone: "danger", run: async () => {

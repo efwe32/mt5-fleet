@@ -448,7 +448,7 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
 
     @app.post("/api/strategy/library/delete")
     def library_delete(body: dict):
-        """删除 EA 库里的 .ex5 / .set（本机 data/ea_library）。台账仍挂着或正在运行时拒绝。"""
+        """删除 EA 库里的 .ex5 / .set（本机 data/ea_library）。会自动清台账；在线账户尝试从图表卸下。"""
         return fleet.delete_library(str(body.get("name") or ""))
 
     @app.post("/api/strategy/deploy")
@@ -505,7 +505,8 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
                 fleet.store.save_settings()
             except (TypeError, ValueError):
                 pass
-        opts = {"magic_step": step, "group_presets": gp, "magic_param": mp, "replace": body.get("replace", True) is not False}
+        # 分发固定：先清该账户全部旧策略再挂新 EA（replace/clear_all 由 manager 强制）
+        opts = {"magic_step": step, "group_presets": gp, "magic_param": mp, "replace": True, "clear_all": True}
         return run_exclusive(fleet.distribute, ids_of(body), st, opts)
 
     @app.post("/api/strategy/stop")

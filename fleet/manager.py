@@ -1236,14 +1236,17 @@ class Fleet:
                     self._prog_finish(i, r.get("ok", False), r.get("message", ""))
         return results
 
-    def _record_deploy(self, results: dict, per: dict, replace: bool):
+    def _record_deploy(self, results: dict, per: dict, replace: bool, clear_all: bool = False):
+        """成功部署后写台账。clear_all：分发时清掉该账户上全部旧策略，只留新挂的。"""
         for i, r in results.items():
             a = self.store.get(i)
             if not a or not r.get("ok"):
                 continue
             pp = per[i]
             d = r.get("detail") or {}
-            if replace:
+            if clear_all:
+                a["strategies"] = []
+            elif replace:
                 a["strategies"] = [x for x in a["strategies"] if x["fileName"] != pp["fileName"]]
             self._upsert_strategy(a, {**pp, "magic": d.get("magic", pp["magic"]), "preset": pp.get("preset", ""),
                                       "symbol": d.get("symbol") or pp.get("symbol", "")},
@@ -1270,12 +1273,12 @@ class Fleet:
         return self._summary(title, results)
 
     def distribute(self, ids: list[str], s: dict, opts: dict) -> dict:
-        """一键分发：未登录的先自动登录 → 每个账户 复制 EA → 重启终端 → 挂到图表 → 校验。"""
+        """一键分发：未登录的先自动登录 → 先清该账户旧策略 → 复制 EA → 重启终端 → 挂到图表 → 校验。
+        每个被分发的账户最终只保留本次新挂的 EA（台账与图表一并换掉旧的）。"""
         title = "分发策略"
         self._prog_begin(title, ids, DIST_STEPS)
         results: dict = {}
         per: dict = {}
-        replace = bool(opts.get("replace", True))
         self._clear_algo_off(ids)      # 分发是用户点的：EA 要跑，算法交易恢复成开
         try:
             need = []
@@ -1299,14 +1302,16 @@ class Fleet:
             gp = opts.get("group_presets") or {}
             for k, i in enumerate(ids):
                 a = self.store.get(i) or {}
+                prior = [x["fileName"] for x in (a.get("strategies") or []) if x.get("fileName")]
                 per[i] = {**s, "magic": base + k * step,
                           "preset": (gp.get(a.get("group", "")) or s.get("preset") or ""),
-                          "magic_param": (opts.get("magic_param") or "").strip(), "replace": replace}
+                          "magic_param": (opts.get("magic_param") or "").strip(),
+                          "replace": True, "clear_prior": True, "clear_files": prior}
             ready = [i for i in ids if i not in results]
             results.update(self._deploy_many(ready, per))
         finally:
             self._prog_end()
-        self._record_deploy(results, per, replace)
+        self._record_deploy(results, per, replace=True, clear_all=True)
         out = self._summary(title, results)
         return out
 
@@ -1641,8 +1646,8 @@ class Fleet:
         return sorted(p.name for p in lib.iterdir() if p.suffix.lower() in (".ex5", ".set")) if lib.exists() else []
 
     def delete_library(self, name: str) -> dict:
-        """删除 EA 库里的本机副本（data/ea_library）。不碰 terminals、桌面 MT5。
-        若还有账户台账挂着同名 EA（或仍在用这个 .set），先拒绝，避免误删正在用的文件。"""
+        """删除 EA 库里的本机副本（data/ea_library）。不碰 terminals 目录里的副本、不碰桌面 MT5。
+        台账若还挂着同名 .ex5（或仍引用该 .set）：在线且为本程序终端的会先尝试从图表卸下，再清台账，然后删库文件。"""
         name = os.path.basename(str(name or "").strip())
         if not name or not re.fullmatch(r'[^\\/:*?"<>|]+\.(ex5|set)', name, re.I):
             return {"ok": False, "message": "文件名不对"}
@@ -1651,42 +1656,63 @@ class Fleet:
         if not path.is_file() or path.resolve().parent != lib.resolve():
             return {"ok": False, "message": f"EA 库里没有「{name}」"}
         low = name.lower()
-        using, running = [], []
+        is_ex5 = low.endswith(".ex5")
+        # 收集：需要停止的在线账户 → 策略 id；以及所有要清台账的账户
+        only: dict[str, list[str]] = {}
+        touched = 0
         for a in self.store.accounts:
+            match_sids = []
             for s in a.get("strategies") or []:
-                if low.endswith(".ex5") and (s.get("fileName") or "").lower() == low:
-                    using.append(a)
+                if is_ex5 and (s.get("fileName") or "").lower() == low:
+                    match_sids.append(s["id"])
                     if s.get("running"):
-                        running.append(a)
-                if low.endswith(".set") and (s.get("preset") or "").lower() == low:
-                    using.append(a)
-                    if s.get("running"):
-                        running.append(a)
-        # 去重
-        seen, uniq = set(), []
-        for a in using:
-            if a["id"] not in seen:
-                seen.add(a["id"]); uniq.append(a)
-        using = uniq
-        seen, run_u = set(), []
-        for a in running:
-            if a["id"] not in seen:
-                seen.add(a["id"]); run_u.append(a)
-        running = run_u
-        if running:
-            names = "、".join((a.get("alias") or a.get("login") or a["id"]) for a in running[:5])
-            more = f" 等 {len(running)} 个" if len(running) > 5 else ""
-            return {"ok": False, "message": f"「{name}」还在 {names}{more} 的图表上运行。请先停止或「移除」这些账户上的策略，再删除库文件。"}
-        if using:
-            names = "、".join((a.get("alias") or a.get("login") or a["id"]) for a in using[:5])
-            more = f" 等 {len(using)} 个" if len(using) > 5 else ""
-            return {"ok": False, "message": f"还有 {len(using)} 个账户台账里挂着「{name}」（{names}{more}）。请先在策略页「移除」或「一键移除」，再删除库文件。不会动终端里已复制的文件。"}
+                        online = self._alive(a["id"]) and self.runtime.get(a["id"], {}).get("link") == "online"
+                        owned = bool(a.get("terminal_path") and self.registry.get(a["terminal_path"])) or self.mock
+                        if online and owned:
+                            only.setdefault(a["id"], []).append(s["id"])
+                elif (not is_ex5) and (s.get("preset") or "").lower() == low:
+                    match_sids.append(s["id"])
+            if match_sids:
+                touched += 1
+        stop_fail: list[str] = []
+        if only and is_ex5:
+            out = self.stop_strategies(list(only.keys()), only, "删除库文件前停止策略")
+            for r in out.get("results") or []:
+                if not r.get("ok"):
+                    stop_fail.append(r["id"])
+        cleaned = 0
+        for a in self.store.accounts:
+            if is_ex5:
+                before = len(a.get("strategies") or [])
+                a["strategies"] = [s for s in (a.get("strategies") or []) if (s.get("fileName") or "").lower() != low]
+                cleaned += before - len(a["strategies"])
+            else:
+                for s in a.get("strategies") or []:
+                    if (s.get("preset") or "").lower() == low:
+                        s["preset"] = ""
+                        cleaned += 1
+        if cleaned or touched:
+            self.store.save_accounts()
         try:
             path.unlink()
         except OSError as e:
             return {"ok": False, "message": f"删除失败：{e}"}
-        self.log("", "删除策略文件", True, f"已从 EA 库删除 {name}", "本机")
-        return {"ok": True, "message": f"已从 EA 库删除「{name}」（终端里已复制的文件和桌面 MT5 都没动）", "name": name}
+        parts = [f"已从 EA 库删除「{name}」"]
+        if cleaned:
+            parts.append(f"并已从台账清掉 {cleaned} 条相关记录" if is_ex5 else f"并已清空 {cleaned} 条策略的参数文件引用")
+        if only and not stop_fail:
+            parts.append("在线账户已尝试从图表卸下")
+        elif stop_fail:
+            parts.append("部分在线账户未能从图表卸下，可稍后「一键停止/移除」或重启终端")
+        elif touched and is_ex5:
+            parts.append("离线账户只清了台账；终端图表上若还挂着同名 EA，登录后可用「一键停止/移除」")
+        else:
+            parts.append("终端里已复制的文件和桌面 MT5 都没动")
+        msg = "；".join(parts[:2]) + ("。" + "；".join(parts[2:]) if len(parts) > 2 else "")
+        if not msg.endswith("。") and not msg.endswith("）"):
+            msg += "。"
+        self.log("", "删除策略文件", True, f"已从 EA 库删除 {name}" + (f"（清台账 {cleaned}）" if cleaned else ""), "本机")
+        return {"ok": True, "message": msg, "name": name, "cleaned": cleaned, "stopped": len(only), "stop_fail": len(stop_fail)}
 
     def shutdown(self):
         with self.lock:

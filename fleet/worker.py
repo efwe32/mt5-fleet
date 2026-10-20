@@ -1121,13 +1121,29 @@ class Worker:
         if not ok:
             return self._step_fail("restart", f"关闭终端失败：{msg}")
         self.progress("restart", "ok", msg)
-        # 1. 把 EA 写进图表配置（终端已关闭）：替换同名 EA 的旧图表，去掉多余的空图表
+        # 1. 把 EA 写进图表配置（终端已关闭）：卸下旧策略（分发清全部 / 或仅同名）再挂新 EA，去掉多余空图表
         dll = bool(self.settings.get("allow_dll_import", False))
         preset_file = (T.mql5_dir(path) / "Presets" / use_preset) if use_preset else None
+        drop = []
+        if p.get("clear_prior") or p.get("clear_files"):
+            drop = [Path(n).stem for n in (p.get("clear_files") or []) if n]
+        if p.get("replace", True) and stem not in drop:
+            drop.append(stem)
+        # 旧版本写在其它图表段落里的同名 EA 也去掉
+        for n in (p.get("clear_files") or []):
+            try:
+                T.remove_expert_from_charts(path, n)
+            except Exception:
+                pass
+        if p.get("replace", True):
+            try:
+                T.remove_expert_from_charts(path, fname)
+            except Exception:
+                pass
         self.progress("attach", "run", f"正在把 EA 挂到 {symbol} {tf} 图表并重新打开终端")
         try:
             prof = T.prepare_profile(path, symbol, tf, {"stem": stem, "inputs": T.preset_inputs(preset_file)},
-                                     [stem] if p.get("replace", True) else [], dll)
+                                     drop, dll)
         except Exception as e:
             prof = None
             perr = str(e)
