@@ -327,7 +327,7 @@ check("分发进度五步全绿", [k for k, _ in prog["steps"]] == ["login", "fi
       and all(all(v["s"] == "ok" for v in prog["items"][i]["steps"].values()) for i in qids))
 r = c.post("/api/strategy/distribute", json={"ids": qids[:1], "strategy": {"fileName": "Pulse.ex5", "symbol": "EURUSD", "timeframe": "M15", "magic": 800}}).json()
 st = c.get("/api/state").json()
-check("再次分发替换同名 EA（不重复记录）", [(x["symbol"], x["magic"]) for x in next(a for a in st["accounts"] if a["id"] == qids[0])["strategies"]] == [("EURUSD", 800)])
+check("再次分发同名 EA 只留一条（清旧）", [(x["symbol"], x["magic"]) for x in next(a for a in st["accounts"] if a["id"] == qids[0])["strategies"]] == [("EURUSD", 800)])
 r = c.post("/api/strategy/distribute", json={"ids": qids, "strategy": {"fileName": "Pulse.ex5", "symbol": "XAUUSD", "timeframe": "H9", "magic": 1}})
 check("分发参数校验（周期）", r.status_code == 400)
 r = c.post("/api/strategy/distribute", json={"ids": qids, "strategy": {"fileName": "Pulse.ex5", "symbol": "XAUUSD", "timeframe": "H1", "magic": 1}, "magic_param": "bad name"})
@@ -423,23 +423,40 @@ if online:
 html3 = c.get("/").text
 check("前端有分组管理和服务器时间", "分组管理" in html3 and "srvClock" in html3 and "服务器时间" in html3)
 
-# 删除 EA 库文件
+# 删除 EA 库文件（挂着也能直接删：清台账 + 尝试卸图表）
 c.post("/api/strategy/upload", files={"file": ("ToDelete.ex5", b"EX5" * 20)})
 c.post("/api/strategy/upload", files={"file": ("keep.set", b"Lots=0.01\r\n")})
 st = c.get("/api/state").json()
 check("库里有 ToDelete.ex5", "ToDelete.ex5" in st["library"], st["library"])
-# 分发后台账挂着 → 拒绝删除
 r = c.post("/api/strategy/distribute", json={"ids": qids[:1], "strategy": {"fileName": "ToDelete.ex5", "symbol": "XAUUSD", "timeframe": "M15", "magic": 91}}).json()
 check("分发 ToDelete", r.get("ok") == 1, r)
+st = c.get("/api/state").json()
+acc0 = next(a for a in st["accounts"] if a["id"] == qids[0])
+check("分发后台账有 ToDelete", any(x["fileName"] == "ToDelete.ex5" for x in acc0["strategies"]), acc0.get("strategies"))
 r = c.post("/api/strategy/library/delete", json={"name": "ToDelete.ex5"}).json()
-check("运行/台账中拒绝删库", not r.get("ok") and ("台账" in r.get("message", "") or "运行" in r.get("message", "")), r)
-c.post("/api/strategy/strip", json={"ids": qids[:1]})
-r = c.post("/api/strategy/library/delete", json={"name": "ToDelete.ex5"}).json()
-check("移除后可删库", r.get("ok") and "ToDelete.ex5" not in c.get("/api/state").json()["library"], r)
+check("挂着也能直接删库", r.get("ok") and "ToDelete.ex5" not in c.get("/api/state").json()["library"], r)
+st = c.get("/api/state").json()
+acc0 = next(a for a in st["accounts"] if a["id"] == qids[0])
+check("删库后台账已清同名策略", not any(x["fileName"] == "ToDelete.ex5" for x in acc0.get("strategies") or []), acc0.get("strategies"))
+check("删库回执含清台账", int(r.get("cleaned") or 0) >= 1 or "台账" in r.get("message", ""), r)
 r = c.post("/api/strategy/library/delete", json={"name": "keep.set"}).json()
 check("可删未使用的 set", r.get("ok"), r)
 r = c.post("/api/strategy/library/delete", json={"name": "nope.ex5"}).json()
 check("删除不存在的文件", not r.get("ok"), r)
+
+# 分发不同 EA：自动清掉该账户旧策略，只留新的
+c.post("/api/strategy/upload", files={"file": ("OldPulse.ex5", b"EX5" * 20)})
+c.post("/api/strategy/upload", files={"file": ("NewPulse.ex5", b"EX5" * 22)})
+r = c.post("/api/strategy/distribute", json={"ids": qids[:1], "strategy": {"fileName": "OldPulse.ex5", "symbol": "XAUUSD", "timeframe": "M15", "magic": 501}}).json()
+check("先分发 OldPulse", r.get("ok") == 1, r)
+r = c.post("/api/strategy/distribute", json={"ids": qids[:1], "strategy": {"fileName": "NewPulse.ex5", "symbol": "EURUSD", "timeframe": "H1", "magic": 502}}).json()
+check("再分发 NewPulse", r.get("ok") == 1, r)
+st = c.get("/api/state").json()
+acc0 = next(a for a in st["accounts"] if a["id"] == qids[0])
+names = [x["fileName"] for x in acc0.get("strategies") or []]
+check("分发新策略后只留新 EA", names == ["NewPulse.ex5"], names)
+c.post("/api/strategy/library/delete", json={"name": "OldPulse.ex5"})
+c.post("/api/strategy/library/delete", json={"name": "NewPulse.ex5"})
 
 r = c.post("/api/accounts/delete", json={"ids": qids + [cent]}).json()
 check("清理测试账户", r["removed"] == 4)
