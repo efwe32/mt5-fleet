@@ -88,7 +88,7 @@ window.FleetMobileSheet = (function () {
     st: null, events: [], seq: 0, total: 0, equity: [], eqLast: 0, deals: {}, dealsV: -1, started: 0, srvSkew: 0,
     histMode: "eq", agg: null, aggKey: "", pollTimer: 0, inflight: false, tw: {}, k: {}, txt: new WeakMap(),
     lit: {}, lastFloat: {}, cycleT: 0, boost: 0, reveal: 0, particles: [], sats: {}, links: [], chordT: 0, avKey: "", logInit: false,
-    filter: null, gen: 0, popOpen: false,
+    filter: null, gen: 0, popOpen: false, detailId: null, detailBusy: false,
   };
   window.__desk = D;
 
@@ -440,10 +440,14 @@ window.FleetMobileSheet = (function () {
     if (key !== D.avKey) {
       D.avKey = key;
       if (!sc.length) { row.innerHTML = `<div class="pd-empty-av">还没有账户 · 在账号页添加后，每个账户会在这里显示一张卡片</div>`; return; }
-      row.innerHTML = sc.map((a, i) => `<div class="pd-av" data-av="${esc(a.id)}" style="--c:${colorOf(a.id)}" title="${esc(a.alias)} · ${esc(a.login)}">
+      row.innerHTML = sc.map((a, i) => `<div class="pd-av" data-av="${esc(a.id)}" role="button" tabindex="0" style="--c:${colorOf(a.id)}" title="点开 ${esc(a.alias)} · ${esc(a.login)}">
         <span class="n">${pad(i + 1)}</span><span class="s"></span><span class="sig">${[3, 5, 7, 9].map((h) => `<i style="height:${h - 1}px"></i>`).join("")}</span>
         <canvas width="16" height="16"></canvas><div class="nm">${esc(a.alias)}</div><div class="rl">${esc((a.group || "未分组").toUpperCase())}</div><div class="pl"></div></div>`).join("");
-      row.querySelectorAll(".pd-av").forEach((el) => drawFace(el.querySelector("canvas"), hash(accById(el.dataset.av)?.login || el.dataset.av)));
+      row.querySelectorAll(".pd-av").forEach((el) => {
+        drawFace(el.querySelector("canvas"), hash(accById(el.dataset.av)?.login || el.dataset.av));
+        el.addEventListener("click", (e) => { e.preventDefault(); openAvDetail(el.dataset.av); });
+        el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openAvDetail(el.dataset.av); } });
+      });
       D.avEls = {}; row.querySelectorAll(".pd-av").forEach((el) => { D.avEls[el.dataset.av] = { el, s: el.querySelector(".s"), pl: el.querySelector(".pl"), sig: [...el.querySelectorAll(".sig i")] }; });
     }
     sc.forEach((a) => {
@@ -455,6 +459,7 @@ window.FleetMobileSheet = (function () {
       o.pl.style.color = on ? (a.floating >= 0 ? C.g : C.crim) : "";
       const bars = on ? 1 + Math.min(3, a.positionsCount) : 0;
       o.sig.forEach((b, i) => b.classList.toggle("on", i < bars));
+      o.el.classList.toggle("pd-av-on", D.detailId === a.id);
       // 浮盈变化 → 点亮
       if (on) {
         const prev = D.lastFloat[a.id];
@@ -463,6 +468,208 @@ window.FleetMobileSheet = (function () {
         else if (Math.abs(a.floating - prev) > th) { light(a.id, a.floating > prev ? C.g : C.pink, 2400); D.lastFloat[a.id] = a.floating; }
       }
     });
+  }
+
+  // ---------------- 头像详情：单账号收益 / 持仓 / 平仓建仓 ----------------
+  function linkLabel(a) {
+    if (!a) return "未知";
+    if (a.link === "online") return "在线";
+    if (a.link === "error") return "出错";
+    if (a.link === "connecting") return "连接中";
+    return "离线";
+  }
+  function defaultSymFor(a) {
+    const counts = {};
+    (a.positions || []).forEach((p) => { const s = p.symbol || ""; if (s) counts[s] = (counts[s] || 0) + 1; });
+    let best = "", n = 0;
+    Object.keys(counts).forEach((s) => { if (counts[s] > n) { n = counts[s]; best = s; } });
+    if (best) return best;
+    const st = D.st || {};
+    const def = (st.settings && st.settings.default_symbol) || "";
+    if (def) return def;
+    const syms = st.symbols || [];
+    if (syms.includes("USDJPYc")) return "USDJPYc";
+    return syms[0] || "USDJPYc";
+  }
+  function todayClosedFor(id) {
+    try { const g = computeAgg(); return (g.todayBy && g.todayBy[id]) || 0; } catch (e) { return 0; }
+  }
+  function ensureAvSheet() {
+    let m = document.getElementById("pdAvMask");
+    if (m) return m;
+    m = document.createElement("div");
+    m.id = "pdAvMask";
+    m.className = "pd-avmask";
+    m.setAttribute("aria-hidden", "true");
+    m.innerHTML = `<div class="pd-avsheet" id="pdAvSheet" role="dialog" aria-modal="true" aria-label="账户详情"></div>`;
+    const openedGuard = () => Date.now() - (m._openedAt || 0) < 350;
+    m.addEventListener("click", (e) => {
+      if (e.target !== m) return;
+      if (openedGuard()) return;
+      closeAvDetail();
+    });
+    document.body.appendChild(m);
+    if (!D._avEsc) {
+      D._avEsc = (e) => {
+        if (e.key !== "Escape") return;
+        if (document.querySelector("#modal .overlay")) return; // 确认框优先
+        if (D.detailId) { e.stopPropagation(); closeAvDetail(); }
+      };
+      document.addEventListener("keydown", D._avEsc);
+    }
+    return m;
+  }
+  function openAvDetail(id) {
+    if (!id || !accById(id)) return;
+    // 若重建前用户正在填建仓表单，先记下
+    const prevSym = D._avForm && D._avForm.sym;
+    const prevLots = D._avForm && D._avForm.lots;
+    D.detailId = id;
+    const m = ensureAvSheet();
+    m._openedAt = Date.now();
+    m.classList.add("show");
+    m.setAttribute("aria-hidden", "false");
+    document.body.classList.add("pd-av-open");
+    D._avForm = { sym: prevSym || defaultSymFor(accById(id)), lots: prevLots || "0.01" };
+    renderAvDetail(true);
+  }
+  function closeAvDetail() {
+    D.detailId = null;
+    const m = document.getElementById("pdAvMask");
+    if (m) {
+      m.classList.remove("show");
+      m.setAttribute("aria-hidden", "true");
+      const sh = document.getElementById("pdAvSheet");
+      if (sh) sh.innerHTML = "";
+    }
+    document.body.classList.remove("pd-av-open");
+    if (D.avEls) Object.values(D.avEls).forEach((o) => o.el && o.el.classList.remove("pd-av-on"));
+  }
+  function readAvForm() {
+    const symEl = document.getElementById("pdAvSym");
+    const lotsEl = document.getElementById("pdAvLots");
+    if (symEl) D._avForm = D._avForm || {}, D._avForm.sym = symEl.value.trim();
+    if (lotsEl) D._avForm = D._avForm || {}, D._avForm.lots = lotsEl.value.trim();
+    return D._avForm || { sym: "USDJPYc", lots: "0.01" };
+  }
+  function renderAvDetail(focusClose) {
+    const id = D.detailId;
+    if (!id) return;
+    const a = accById(id);
+    const sh = document.getElementById("pdAvSheet");
+    if (!sh) return;
+    if (!a) { closeAvDetail(); return; }
+    const form = readAvForm();
+    const ae = document.activeElement;
+    const keepId = (ae && (ae.id === "pdAvSym" || ae.id === "pdAvLots")) ? ae.id : "";
+    let selStart = 0, selEnd = 0;
+    if (keepId) { try { selStart = ae.selectionStart; selEnd = ae.selectionEnd; } catch (e) { /* */ } }
+    const online = a.link === "online";
+    const ccy = a.currency || "USD";
+    const pos = (a.positions || []).slice().sort((x, y) => (y.profit || 0) - (x.profit || 0) || String(x.symbol || "").localeCompare(String(y.symbol || "")));
+    const today = todayClosedFor(id);
+    const fl = Number(a.floating) || 0;
+    const bal = Number(a.balance) || 0;
+    const eq = Number(a.equity) || 0;
+    const col = colorOf(a.id);
+    const stCls = online ? "on" : a.link === "error" ? "err" : "";
+    const posRows = !online
+      ? `<p class="pd-avempty">该账户不在线：先在账号页登录。</p>`
+      : !pos.length
+        ? `<p class="pd-avempty">当前没有持仓。</p>`
+        : `<div class="pd-avtw"><table><thead><tr>
+            <th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>现价</th><th>盈亏</th><th>魔术号</th><th></th>
+          </tr></thead><tbody>
+          ${pos.map((p) => {
+            const side = p.side === "buy" ? "多" : "空";
+            const sc = p.side === "buy" ? "pd-g" : "pd-r";
+            const pl = Number(p.profit) || 0;
+            const plc = pl > 0 ? "pd-g" : pl < 0 ? "pd-r" : "";
+            return `<tr>
+              <td>${esc(p.symbol)}</td>
+              <td class="${sc}">${side}</td>
+              <td class="num">${nf(p.volume)}</td>
+              <td class="num">${esc(p.openPrice)}</td>
+              <td class="num">${esc(p.price)}</td>
+              <td class="num ${plc}">${sgn(pl)}</td>
+              <td class="num">${p.magic == null ? "—" : esc(p.magic)}</td>
+              <td><button type="button" class="pd-avbtn danger" data-avclose="${esc(a.id)}:${esc(p.ticket)}" ${D.detailBusy ? "disabled" : ""}>平仓</button></td>
+            </tr>`;
+          }).join("")}
+          </tbody></table></div>`;
+    sh.innerHTML = `
+      <div class="pd-avhd" style="--c:${col}">
+        <div class="pd-avhd-l">
+          <div class="pd-avhd-t">${esc(a.alias || a.login)}</div>
+          <div class="pd-avhd-s"><span class="pd-avdot ${stCls}"></span>${linkLabel(a)} · 账号 ${esc(a.login)} · ${esc(a.group || "未分组")}</div>
+        </div>
+        <button type="button" class="pd-avx" id="pdAvClose" aria-label="关闭">×</button>
+      </div>
+      <div class="pd-avmetrics">
+        <div class="pd-avm"><div class="lab">余额</div><div class="val num">${nf(bal)} <small>${esc(ccy)}</small></div></div>
+        <div class="pd-avm"><div class="lab">净值</div><div class="val num">${nf(eq)}</div></div>
+        <div class="pd-avm"><div class="lab">浮动盈亏</div><div class="val num ${fl > 0 ? "pd-g" : fl < 0 ? "pd-r" : ""}">${online ? sgn(fl) : "—"}</div></div>
+        <div class="pd-avm"><div class="lab">今日平仓</div><div class="val num ${today > 0 ? "pd-g" : today < 0 ? "pd-r" : ""}">${sgn(today)}</div></div>
+        <div class="pd-avm"><div class="lab">持仓笔数</div><div class="val num">${online ? pos.length : "—"}</div></div>
+      </div>
+      <div class="pd-avsec">
+        <div class="pd-avsec-t">持仓</div>
+        ${posRows}
+      </div>
+      <div class="pd-avsec pd-avorder">
+        <div class="pd-avsec-t">建仓（仅本账户）</div>
+        <div class="pd-avform">
+          <label>品种<input type="text" id="pdAvSym" value="${esc(form.sym || defaultSymFor(a))}" autocomplete="off" spellcheck="false" ${!online || D.detailBusy ? "disabled" : ""}></label>
+          <label>手数<input type="number" id="pdAvLots" min="0.01" step="0.01" value="${esc(form.lots || "0.01")}" ${!online || D.detailBusy ? "disabled" : ""}></label>
+          <button type="button" class="pd-avbtn buy" id="pdAvBuy" ${!online || D.detailBusy ? "disabled" : ""}>开多</button>
+          <button type="button" class="pd-avbtn sell" id="pdAvSell" ${!online || D.detailBusy ? "disabled" : ""}>开空</button>
+        </div>
+        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。</p>
+      </div>`;
+    const closeBtn = document.getElementById("pdAvClose");
+    if (closeBtn) {
+      closeBtn.onclick = () => closeAvDetail();
+      if (focusClose) try { closeBtn.focus(); } catch (e) { /* */ }
+    }
+    sh.querySelectorAll("[data-avclose]").forEach((b) => {
+      b.onclick = () => {
+        const [aid, tk] = b.dataset.avclose.split(":");
+        const FT = window.FleetTrade;
+        if (FT && FT.closeTicket) FT.closeTicket(aid, tk);
+        else if (typeof closeTicket === "function") closeTicket(aid, tk);
+      };
+    });
+    const buy = document.getElementById("pdAvBuy");
+    const sell = document.getElementById("pdAvSell");
+    if (buy) buy.onclick = () => placeAvOrder("buy");
+    if (sell) sell.onclick = () => placeAvOrder("sell");
+    if (keepId && !focusClose) {
+      const el = document.getElementById(keepId);
+      if (el) { try { el.focus(); el.setSelectionRange(selStart, selEnd); } catch (e) { /* */ } }
+    }
+  }
+  async function placeAvOrder(kind) {
+    const id = D.detailId;
+    const a = accById(id);
+    if (!a) return;
+    const FT = window.FleetTrade;
+    if (a.link !== "online") { if (FT && FT.toast) FT.toast("账户不在线", true); return; }
+    const form = readAvForm();
+    const sym = (form.sym || "").trim();
+    const lots = Number(form.lots);
+    if (!/^[A-Za-z0-9._#&+\-]{1,32}$/.test(sym)) { if (FT && FT.toast) FT.toast("请填写品种", true); return; }
+    if (!(lots > 0)) { if (FT && FT.toast) FT.toast("手数需大于 0", true); return; }
+    if (!FT || !FT.placeOrderFor) { if (FT && FT.toast) FT.toast("交易接口未就绪，请刷新页面", true); return; }
+    D.detailBusy = true; renderAvDetail(false);
+    try {
+      await FT.placeOrderFor(id, {
+        symbol: sym, kind, lots, scale_mode: "fixed", ref_equity: 0, scale_groups: [],
+        sltp_mode: "price", sl: 0, tp: 0, magic: 880000, comment: "fleet avatar",
+      });
+    } finally {
+      D.detailBusy = false;
+      if (D.detailId) renderAvDetail(false);
+    }
   }
   function light(id, col, ms) { D.lit[id] = { col, until: performance.now() + ms }; }
   function updateLit(now) {
@@ -998,8 +1205,10 @@ window.FleetMobileSheet = (function () {
       if (!D.built) return;
       renderAvatars(scopeAccs());
       if (D.popOpen) renderPick();
+      if (D.detailId) renderAvDetail(false);
     },
     filterIds() { return filterIds(); },
     scopeAccs() { return scopeAccs(); },
+    openAvDetail, closeAvDetail,
   };
 })();

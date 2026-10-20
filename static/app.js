@@ -1202,6 +1202,29 @@ $("#search").addEventListener("input", (e) => { ui.search = e.target.value; rend
 { const adv = $("#tradeAdv"); if (localStorage.getItem("fleet.tradeAdv") === "1") adv.open = true;
   adv.addEventListener("toggle", () => { localStorage.setItem("fleet.tradeAdv", adv.open ? "1" : "0"); ui.lastRender = {}; render(); }); }
 
+
+// 收益台头像详情等调用：单账户平仓 / 建仓薄封装
+async function placeOrderFor(accId, order) {
+  const a = (ui.state?.accounts || []).find((x) => x.id === accId);
+  if (!a) { toast("账户不存在", true); return; }
+  if (!(Number(order.lots) > 0)) { toast("手数需大于 0", true); return; }
+  if (!order.symbol) { toast("请填写品种", true); return; }
+  let pv;
+  try { pv = await api("/api/trade/preview", { ids: [accId], order }); } catch (e) { toast(e.message, true); return; }
+  const row = (pv.rows || []).find((r) => r.id === accId) || (pv.rows || [])[0];
+  const lots = row ? row.lots : order.lots;
+  const warn = row && row.warn ? `<div class="small down-t" style="margin-top:6px">${esc(row.warn)}</div>` : "";
+  const kindLab = KIND_LABEL[order.kind] || order.kind;
+  confirmBox({
+    title: `${kindLab} ${order.symbol}`,
+    desc: `<div>仅对 <b>${esc(a.alias)}</b>（${esc(a.login)}）${kindLab} <b>${esc(order.symbol)}</b> <b>${esc(lots)}</b> 手，魔术号 ${esc(order.magic)}，备注 ${esc(order.comment || "")}。</div>${warn}`,
+    label: "确认下单",
+    tone: String(order.kind || "").startsWith("buy") ? "up" : "danger",
+    run: () => { runBatch("单账户下单", "/api/trade/order", { ids: [accId], order }); },
+  });
+}
+window.FleetTrade = { closeTicket, placeOrderFor, confirmBox, toast, api, runBatch };
+
 renderNav();
 poll().then(() => { updStartup(); if (ui.tab === "settings") fillSettings(); if (ui.tab === "log") loadLogs(); if (ui.tab === "stats") loadStats(); if (ui.state) { $("#oGroups").value = (ui.state.settings.scale_groups || []).join(","); if (ui.state.settings.default_symbol) $("#oSymbol").value = ui.state.settings.default_symbol; } });
 setInterval(() => { if (ui.tab === "log") loadLogs(); }, 3000);
