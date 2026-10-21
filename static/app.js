@@ -684,6 +684,28 @@ function closeTicket(accId, ticket) {
     label: "确认平仓", tone: "danger",
     run: () => { runBatch("平单笔", "/api/trade/close", { ids: [accId], filter: { mode: "ticket", ticket: Number(ticket) } }); } });
 }
+/** 头像详情：只平当前这一户。mode = all | long | short */
+function closeByModes(accId, mode) {
+  const a = (ui.state?.accounts || []).find((x) => x.id === accId);
+  if (!a) return toast("账户不存在", true);
+  if (a.link !== "online") return toast("该账户不在线，请先登录", true);
+  if (!["all", "long", "short"].includes(mode)) return toast("未知平仓方式", true);
+  const match = (p) => mode === "long" ? p.side === "buy" : mode === "short" ? p.side === "sell" : true;
+  const ps = (a.positions || []).filter(match);
+  if (!ps.length) {
+    const tip = mode === "long" ? "没有多单" : mode === "short" ? "没有空单" : "没有持仓";
+    return toast(`该账户${tip}`, true);
+  }
+  const pnl = ps.reduce((s, p) => s + (Number(p.profit) || 0), 0);
+  const titles = { all: "一键全部清仓", long: "平全部多", short: "平全部空" };
+  const sideTip = mode === "long" ? "全部多单" : mode === "short" ? "全部空单" : "全部持仓";
+  confirmBox({
+    title: titles[mode],
+    desc: `仅对 <b>${esc(a.alias)}</b>（账号 ${esc(a.login)}）平掉 <b>${sideTip}</b> 共 ${ps.length} 笔，当前浮盈 ${sfmt(pnl)}。<br>确认后会立即真实平仓，请再看一眼。`,
+    label: "确认平仓", tone: "danger",
+    run: () => { runBatch(titles[mode], "/api/trade/close", { ids: [accId], filter: { mode } }); },
+  });
+}
 function modifyAll() {
   if (!needSel()) return;
   const scope = $("#mScope").value, sl = $("#mSL").value.trim(), tp = $("#mTP").value.trim();
@@ -1233,7 +1255,7 @@ async function placeOrderFor(accId, order) {
     run: () => { runBatch("单账户下单", "/api/trade/order", { ids: [accId], order }); },
   });
 }
-window.FleetTrade = { closeTicket, placeOrderFor, confirmBox, toast, api, runBatch };
+window.FleetTrade = { closeTicket, closeByModes, placeOrderFor, confirmBox, toast, api, runBatch };
 
 renderNav();
 poll().then(() => { updStartup(); if (ui.tab === "settings") fillSettings(); if (ui.tab === "log") loadLogs(); if (ui.tab === "stats") loadStats(); if (ui.state) { $("#oGroups").value = (ui.state.settings.scale_groups || []).join(","); if (ui.state.settings.default_symbol) $("#oSymbol").value = ui.state.settings.default_symbol; } });

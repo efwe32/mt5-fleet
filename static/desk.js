@@ -566,6 +566,15 @@ window.FleetMobileSheet = (function () {
         else if (typeof closeTicket === "function") closeTicket(aid, tk);
       };
     });
+    sh.querySelectorAll("[data-avbatch]").forEach((b) => {
+      b.onclick = () => {
+        const mode = b.dataset.avbatch;
+        const aid = b.dataset.acc || D.detailId;
+        const FT = window.FleetTrade;
+        if (FT && FT.closeByModes) FT.closeByModes(aid, mode);
+        else if (FT && FT.toast) FT.toast("交易接口未就绪，请刷新页面", true);
+      };
+    });
     const buy = document.getElementById("pdAvBuy");
     const sell = document.getElementById("pdAvSell");
     if (buy) buy.onclick = () => placeAvOrder("buy");
@@ -614,6 +623,15 @@ window.FleetMobileSheet = (function () {
       const el = document.getElementById(id); if (el) el.disabled = dis;
     });
     sh.querySelectorAll("[data-avclose]").forEach((b) => { b.disabled = !!D.detailBusy; });
+    const nBuy = pos.filter((p) => p.side === "buy").length;
+    const nSell = pos.filter((p) => p.side === "sell").length;
+    sh.querySelectorAll("[data-avbatch]").forEach((b) => {
+      const mode = b.dataset.avbatch;
+      let ok = online && !D.detailBusy && pos.length > 0;
+      if (mode === "long") ok = online && !D.detailBusy && nBuy > 0;
+      if (mode === "short") ok = online && !D.detailBusy && nSell > 0;
+      b.disabled = !ok;
+    });
   }
   function renderAvDetail(focusClose) {
     const id = D.detailId;
@@ -644,6 +662,11 @@ window.FleetMobileSheet = (function () {
       patchAvLive(sh, a, pos, online, bal, eq, fl, today, ccy);
       return;
     }
+    const nBuyPos = pos.filter((p) => p.side === "buy").length;
+    const nSellPos = pos.filter((p) => p.side === "sell").length;
+    const canAll = online && !D.detailBusy && pos.length > 0;
+    const canLong = online && !D.detailBusy && nBuyPos > 0;
+    const canShort = online && !D.detailBusy && nSellPos > 0;
     const keptSheet = sh.scrollTop;
     const tw0 = sh.querySelector(".pd-avtw");
     const keptTw = tw0 ? { l: tw0.scrollLeft, t: tw0.scrollTop } : null;
@@ -688,7 +711,14 @@ window.FleetMobileSheet = (function () {
         <div class="pd-avm"><div class="lab">持仓笔数</div><div class="val num" data-avm="npos">${online ? pos.length : "—"}</div></div>
       </div>
       <div class="pd-avsec">
-        <div class="pd-avsec-t">持仓</div>
+        <div class="pd-avsec-t pd-avsec-row">
+          <span>持仓</span>
+          <div class="pd-avbatch" ${!online ? 'hidden' : ''}>
+            <button type="button" class="pd-avbtn danger" data-avbatch="all" data-acc="${esc(a.id)}" ${canAll ? "" : "disabled"}>一键全部清仓</button>
+            <button type="button" class="pd-avbtn danger" data-avbatch="short" data-acc="${esc(a.id)}" ${canShort ? "" : "disabled"}>平全部空</button>
+            <button type="button" class="pd-avbtn danger" data-avbatch="long" data-acc="${esc(a.id)}" ${canLong ? "" : "disabled"}>平全部多</button>
+          </div>
+        </div>
         ${posRows}
       </div>
       <div class="pd-avsec pd-avorder">

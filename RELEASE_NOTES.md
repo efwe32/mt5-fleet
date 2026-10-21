@@ -2,6 +2,10 @@
 
 每个版本一节，标题写成 `## v版本号`。发布时 tools/make_release.py 取当前版本那一节作为更新说明（面板里「检查更新」会显示）。
 
+## v1.5.9
+- **头像详情一键批量平仓**：持仓标题旁增加「一键全部清仓 / 平全部空 / 平全部多」，只作用于当前这一户；有对应方向持仓才可点，离线或无持仓时禁用；确认后真实平仓。
+- 复用原有 `/api/trade/close`（`filter.mode` = all / short / long）；`FleetTrade.closeByModes` 薄封装；轮询仍用 structKey / patchAvLive，不打断横滑。
+
 ## v1.5.8
 - **修复头像详情弹层文字发虚/发白**：弹层挂在 `body` 上时拿不到 `.pdesk` 里的 `--pd-*` 变量，白底继承了主界面浅色字。现已在 `.pd-avmask` 上自带完整浅色主题变量。
 - 已核对：确认框（`.overlay`）用全局深色变量正常；手机选账户 `FleetMobileSheet` 已硬编码深色字，不受影响。
