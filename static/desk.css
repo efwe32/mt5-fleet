@@ -222,11 +222,19 @@ body.desk-mode .warnbar{background:#fff3f5;border-color:#e9a5b4;color:#b0203c;bo
   .pd-avrow{grid-auto-columns:minmax(88px,1fr);gap:7px}
 }
 
-/* 头像详情 sheet（挂 body；z-index 低于确认框 .overlay=100） */
-.pd-avmask{display:none;position:fixed;inset:0;background:rgba(20,20,14,.45);z-index:90;-webkit-tap-highlight-color:transparent;align-items:flex-end;justify-content:center;padding:0}
+/* 头像详情 sheet（挂 body；z-index 低于确认框 .overlay=100）
+   必须自带 --pd-*：弹层不在 .pdesk 内，否则白底 + 继承浅色字会发虚发白。 */
+.pd-avmask{
+  --pd-bg:#f3f3f1;--pd-card:#fff;--pd-line:#e7e7e3;--pd-line2:#efefec;--pd-ink:#1b1b1d;--pd-mut:#8b8b86;--pd-faint:#b9b9b3;
+  --pd-g:#2a7a57;--pd-crim:#c8203f;--pd-pink:#e0457b;--pd-blue:#2f5fd0;--pd-lime:#c9f400;--pd-live:#0b6e4c;--pd-purple:#3b2150;
+  --pd-sans:"Segoe UI",Arial,"Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Noto Sans SC",sans-serif;
+  --pd-mono:Consolas,"Cascadia Mono","JetBrains Mono",Menlo,"Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Noto Sans SC",monospace;
+  color:var(--pd-ink);font-family:var(--pd-sans);
+  display:none;position:fixed;inset:0;background:rgba(20,20,14,.45);z-index:90;-webkit-tap-highlight-color:transparent;align-items:flex-end;justify-content:center;padding:0
+}
 .pd-avmask.show{display:flex}
 body.pd-av-open{overflow:hidden}
-.pd-avsheet{width:min(720px,100%);max-height:min(88vh,820px);overflow:auto;background:#fff;border:1px solid var(--pd-line);border-radius:16px 16px 0 0;box-shadow:0 -12px 40px rgba(20,20,10,.18);padding:0 0 18px;color:var(--pd-ink);-webkit-overflow-scrolling:touch}
+.pd-avsheet{width:min(720px,100%);max-height:min(88vh,820px);overflow:auto;background:#fff;border:1px solid var(--pd-line);border-radius:16px 16px 0 0;box-shadow:0 -12px 40px rgba(20,20,10,.18);padding:0 0 18px;color:var(--pd-ink);font-family:var(--pd-sans);-webkit-overflow-scrolling:touch}
 @media (min-width:900px){
   .pd-avmask{align-items:center;padding:24px}
   .pd-avsheet{border-radius:16px;max-height:min(86vh,760px)}
