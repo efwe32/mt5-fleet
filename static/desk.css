@@ -253,6 +253,9 @@ body.pd-av-open{overflow:hidden}
 .pd-avm .val small{font-size:11px;font-weight:600;color:var(--pd-mut)}
 .pd-avsec{padding:4px 16px 8px}
 .pd-avsec-t{font:700 12px var(--pd-mono);letter-spacing:.04em;color:var(--pd-mut);margin:8px 0 8px}
+.pd-avsec-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.pd-avbatch{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pd-avbatch .pd-avbtn.danger{min-height:40px;padding:0 14px;font-size:13px}
 .pd-avempty{font:13px var(--pd-sans);color:var(--pd-mut);margin:0;padding:8px 0}
 .pd-avtw{overflow:auto;border:1px solid var(--pd-line);border-radius:10px;max-height:min(36vh,320px);-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-x pan-y}
 .pd-avtw table{width:100%;border-collapse:collapse;font:12.5px var(--pd-mono);font-variant-numeric:tabular-nums}
@@ -275,4 +278,8 @@ body.pd-av-open{overflow:hidden}
   .pd-avform input,.pd-avbtn.buy,.pd-avbtn.sell{width:100%;min-height:46px;font-size:15px}
   .pd-avform label{width:100%}
   .pd-avform label input{min-width:0;width:100%}
+  .pd-avbatch{width:100%}
+  .pd-avbatch .pd-avbtn.danger{flex:1 1 calc(50% - 4px);min-width:calc(50% - 4px);min-height:46px;font-size:14px}
+  .pd-avbatch .pd-avbtn.danger[data-avbatch=all]{flex:1 1 100%;min-width:100%}
 }
+
