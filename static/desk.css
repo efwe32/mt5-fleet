@@ -151,7 +151,7 @@ body.desk-mode .warnbar{background:#fff3f5;border-color:#e9a5b4;color:#b0203c;bo
 
 /* 头像行 */
 .pd-avs{padding:12px}
-.pd-avrow{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(104px,1fr);gap:9px;overflow-x:auto;scrollbar-width:thin}
+.pd-avrow{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(104px,1fr);gap:9px;overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-x}
 .pd-av{--c:#8b8b86;position:relative;border:1px solid var(--pd-line);border-radius:9px;padding:8px 6px 9px;background:linear-gradient(180deg,color-mix(in srgb,var(--c) 6%,#fff),#fff);text-align:center;transition:border-color .35s,box-shadow .35s,background-color .35s,transform .35s;min-width:0}
 .pd-av .n{position:absolute;left:8px;top:6px;font:600 10px var(--pd-mono);color:var(--c)}
 .pd-av .s{position:absolute;right:8px;top:8px;width:7px;height:7px;border-radius:50%;background:#cfcfca}
@@ -246,7 +246,7 @@ body.pd-av-open{overflow:hidden}
 .pd-avsec{padding:4px 16px 8px}
 .pd-avsec-t{font:700 12px var(--pd-mono);letter-spacing:.04em;color:var(--pd-mut);margin:8px 0 8px}
 .pd-avempty{font:13px var(--pd-sans);color:var(--pd-mut);margin:0;padding:8px 0}
-.pd-avtw{overflow:auto;border:1px solid var(--pd-line);border-radius:10px;max-height:min(36vh,320px)}
+.pd-avtw{overflow:auto;border:1px solid var(--pd-line);border-radius:10px;max-height:min(36vh,320px);-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-x pan-y}
 .pd-avtw table{width:100%;border-collapse:collapse;font:12.5px var(--pd-mono);font-variant-numeric:tabular-nums}
 .pd-avtw th,.pd-avtw td{text-align:left;padding:8px 10px;border-top:1px solid var(--pd-line2);white-space:nowrap}
 .pd-avtw th{position:sticky;top:0;background:#f7f7f4;color:var(--pd-mut);font-weight:600;border-top:0;font-size:11px}

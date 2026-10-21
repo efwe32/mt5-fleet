@@ -76,7 +76,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:po
 .empty h2{margin:0;font-size:16px}
 .empty p{margin:8px auto 0;max-width:460px;color:var(--muted)}
 .empty .row{justify-content:center;margin-top:16px}
-.tablewrap{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+.tablewrap{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-x pan-y}
 table{width:100%;border-collapse:separate;border-spacing:0}
 thead th{background:var(--panel);text-align:left;font-size:12px;color:var(--muted);font-weight:500;padding:8px 10px;white-space:nowrap}
 tbody td{border-top:1px solid var(--line);padding:10px;vertical-align:middle}
