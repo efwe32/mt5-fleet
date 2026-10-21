@@ -20,7 +20,14 @@
     try { localStorage.setItem(LS, JSON.stringify([...A.sel])); } catch (e) { /* 隐私模式 */ }
     renderPick(); render();
   }
-  function set(id, html) { const el = byId(id); if (el && el._h !== html) { el._h = html; el.innerHTML = html; } }
+  function set(id, html) {
+    const el = byId(id); if (!el || el._h === html) return;
+    const tw = el.querySelector(".al-tw, .q-tw, .tablewrap");
+    const kept = tw ? { l: tw.scrollLeft, t: tw.scrollTop } : null;
+    el._h = html; el.innerHTML = html;
+    const tw2 = el.querySelector(".al-tw, .q-tw, .tablewrap");
+    if (tw2 && kept) { tw2.scrollLeft = kept.l; tw2.scrollTop = kept.t; }
+  }
   const online = (a) => a.link === "online" && a.enabled !== false;
   function algoOf(a) {   // true / false / null（不在线，读不到）
     if (!online(a) || !a.terminal) return null;

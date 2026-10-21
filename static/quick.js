@@ -237,13 +237,32 @@
     if (Q.posAccId) sel.value = Q.posAccId;
     sel.disabled = !list.length;
   }
+  // 保存/恢复横向滚动：轮询整表重写会把手机上的 scrollLeft 打回 0
+  function saveTwScroll(root) {
+    const tw = root && root.querySelector(".q-pos-tw, .q-tw, .al-tw, .tablewrap");
+    return tw ? { l: tw.scrollLeft, t: tw.scrollTop } : null;
+  }
+  function restoreTwScroll(root, s) {
+    if (!s) return;
+    const tw = root && root.querySelector(".q-pos-tw, .q-tw, .al-tw, .tablewrap");
+    if (tw) { tw.scrollLeft = s.l; tw.scrollTop = s.t; }
+  }
+  function setHtmlKeepScroll(el, html) {
+    if (!el) return;
+    if (el._h === html) return;
+    const s = saveTwScroll(el);
+    el._h = html;
+    el.innerHTML = html;
+    restoreTwScroll(el, s);
+  }
   function renderPosList() {
     const el = byId("qPosList"), sum = byId("qPosSum"); if (!el) return;
     syncPosAccPick();
     const list = selAccs();
     if (!list.length) {
-      if (sum) sum.innerHTML = `<span class="small muted">先在上方「选择账户」勾选，再在这里挑一个账户看持仓。</span>`;
-      el.innerHTML = `<p class="small muted" style="margin:0">先选择账户。</p>`;
+      if (sum) setHtmlKeepScroll(sum, `<span class="small muted">先在上方「选择账户」勾选，再在这里挑一个账户看持仓。</span>`);
+      el._posKey = "";
+      setHtmlKeepScroll(el, `<p class="small muted" style="margin:0">先选择账户。</p>`);
       return;
     }
     const a = list.find((x) => x.id === Q.posAccId) || list[0];
@@ -255,23 +274,50 @@
     const ccy = a.currency || "USD";
     const online = a.link === "online";
     if (sum) {
-      sum.innerHTML = `<div class="q-possum-row">
+      setHtmlKeepScroll(sum, `<div class="q-possum-row">
         <span>余额 <b>${nf(bal)}</b> ${h(ccy)}</span>
         <span>浮动合计 <b class="${cls(fl)}">${online ? sg(fl) : "—"}</b></span>
         <span>浮赢 <b class="q-up">${online ? sg(win) : "—"}</b></span>
         <span>浮亏 <b class="q-dn">${online ? sg(loss) : "—"}</b></span>
         <span class="q-note">${online ? "在线" : a.link === "error" ? "出错" : a.link === "connecting" ? "连接中" : "离线"} · ${(a.positions || []).length} 笔</span>
-      </div>`;
+      </div>`);
     }
     const rows = (a.positions || []).slice().sort((x, y) => (y.profit || 0) - (x.profit || 0) || String(x.symbol || "").localeCompare(String(y.symbol || "")));
     if (!online) {
-      el.innerHTML = `<p class="small muted" style="margin:0">该账户不在线：先在账号页登录。</p>`;
+      el._posKey = "";
+      setHtmlKeepScroll(el, `<p class="small muted" style="margin:0">该账户不在线：先在账号页登录。</p>`);
       return;
     }
     if (!rows.length) {
-      el.innerHTML = `<p class="small muted" style="margin:0">该账户当前没有持仓。</p>`;
+      el._posKey = "";
+      setHtmlKeepScroll(el, `<p class="small muted" style="margin:0">该账户当前没有持仓。</p>`);
       return;
     }
+    const busy = Q.busy === "close_one";
+    // 结构键：票号/手数/方向/品种等不变时不整表重写（现价浮盈只改单元格，避免手机横滑被 reset）
+    // 按票号排序做结构键：不要用盈亏排序，否则每秒名次变化会触发整表重建、横滑被打回
+    const structKey = a.id + "|" + rows.slice().sort((x, y) => String(x.ticket).localeCompare(String(y.ticket), undefined, { numeric: true }))
+      .map((p) => [p.ticket, p.side, p.volume, p.symbol, p.openPrice, p.magic, p.comment || ""].join(":")).join(";");
+    if (el._posKey === structKey && el.querySelector("tbody")) {
+      const byTicket = new Map(rows.map((p) => [String(p.ticket), p]));
+      el.querySelectorAll("tr[data-ticket]").forEach((tr) => {
+        const p = byTicket.get(String(tr.dataset.ticket)); if (!p) return;
+        const pl = Number(p.profit) || 0;
+        const pxEl = tr.querySelector("[data-live=px]");
+        const plEl = tr.querySelector("[data-live=pl]");
+        if (pxEl && pxEl.textContent !== String(p.price)) pxEl.textContent = String(p.price);
+        if (plEl) {
+          const t = sg(pl);
+          if (plEl.textContent !== t) plEl.textContent = t;
+          plEl.className = "q-num " + cls(pl);
+        }
+      });
+      el.querySelectorAll("button[data-qclose]").forEach((b) => { b.disabled = !!busy; });
+      return;
+    }
+    const kept = saveTwScroll(el);
+    el._posKey = structKey;
+    el._h = "";
     el.innerHTML = `<div class="q-tw q-pos-tw"><table class="q-pos-t"><thead><tr>
       <th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>现价</th><th>浮盈</th><th>魔术号</th><th>备注</th><th></th>
     </tr></thead><tbody>
@@ -279,20 +325,20 @@
       const side = p.side === "buy" ? "多" : "空";
       const sc = p.side === "buy" ? "q-up" : "q-dn";
       const pl = Number(p.profit) || 0;
-      const busy = Q.busy === "close_one";
-      return `<tr data-pos="${h(a.id)}:${h(p.ticket)}">
+      return `<tr data-pos="${h(a.id)}:${h(p.ticket)}" data-ticket="${h(p.ticket)}">
         <td>${h(p.symbol)}</td>
         <td class="${sc}">${side}</td>
         <td class="q-num">${nf(p.volume)}</td>
         <td class="q-num">${p.openPrice}</td>
-        <td class="q-num">${p.price}</td>
-        <td class="q-num ${cls(pl)}">${sg(pl)}</td>
+        <td class="q-num" data-live="px">${p.price}</td>
+        <td class="q-num ${cls(pl)}" data-live="pl">${sg(pl)}</td>
         <td class="q-num">${p.magic == null ? "—" : p.magic}</td>
         <td class="q-note q-pos-cmt" title="${h(p.comment || "")}">${h(p.comment || "—")}</td>
         <td><button type="button" class="q-px" data-qclose="${h(a.id)}:${h(p.ticket)}" title="平掉这一笔" aria-label="平仓" ${busy ? "disabled" : ""}>×</button></td>
       </tr>`;
     }).join("")}
     </tbody></table></div>`;
+    restoreTwScroll(el, kept);
   }
   function askCloseOne(accId, ticket) {
     const a = (Q.st && Q.st.accounts || []).find((x) => x.id === accId);

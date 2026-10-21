@@ -540,7 +540,7 @@ window.FleetMobileSheet = (function () {
       m.classList.remove("show");
       m.setAttribute("aria-hidden", "true");
       const sh = document.getElementById("pdAvSheet");
-      if (sh) sh.innerHTML = "";
+      if (sh) { sh.innerHTML = ""; sh._avKey = ""; }
     }
     document.body.classList.remove("pd-av-open");
     if (D.avEls) Object.values(D.avEls).forEach((o) => o.el && o.el.classList.remove("pd-av-on"));
@@ -551,6 +551,69 @@ window.FleetMobileSheet = (function () {
     if (symEl) D._avForm = D._avForm || {}, D._avForm.sym = symEl.value.trim();
     if (lotsEl) D._avForm = D._avForm || {}, D._avForm.lots = lotsEl.value.trim();
     return D._avForm || { sym: "USDJPYc", lots: "0.01" };
+  }
+  function bindAvDetailHandlers(sh, focusClose) {
+    const closeBtn = document.getElementById("pdAvClose");
+    if (closeBtn) {
+      closeBtn.onclick = () => closeAvDetail();
+      if (focusClose) try { closeBtn.focus(); } catch (e) { /* */ }
+    }
+    sh.querySelectorAll("[data-avclose]").forEach((b) => {
+      b.onclick = () => {
+        const [aid, tk] = b.dataset.avclose.split(":");
+        const FT = window.FleetTrade;
+        if (FT && FT.closeTicket) FT.closeTicket(aid, tk);
+        else if (typeof closeTicket === "function") closeTicket(aid, tk);
+      };
+    });
+    const buy = document.getElementById("pdAvBuy");
+    const sell = document.getElementById("pdAvSell");
+    if (buy) buy.onclick = () => placeAvOrder("buy");
+    if (sell) sell.onclick = () => placeAvOrder("sell");
+  }
+  function patchAvLive(sh, a, pos, online, bal, eq, fl, today, ccy) {
+    const setTxt = (sel, t, clsName) => {
+      const el = sh.querySelector(sel); if (!el) return;
+      if (el.textContent !== t) el.textContent = t;
+      if (clsName !== undefined) el.className = clsName;
+    };
+    const balEl = sh.querySelector("[data-avm=bal]");
+    if (balEl) {
+      const html = `${nf(bal)} <small>${esc(ccy)}</small>`;
+      if (balEl.innerHTML !== html) balEl.innerHTML = html;
+    }
+    setTxt("[data-avm=eq]", nf(eq));
+    const flEl = sh.querySelector("[data-avm=fl]");
+    if (flEl) {
+      const t = online ? sgn(fl) : "—";
+      if (flEl.textContent !== t) flEl.textContent = t;
+      flEl.className = "val num " + (fl > 0 ? "pd-g" : fl < 0 ? "pd-r" : "");
+    }
+    const tdEl = sh.querySelector("[data-avm=today]");
+    if (tdEl) {
+      const t = sgn(today);
+      if (tdEl.textContent !== t) tdEl.textContent = t;
+      tdEl.className = "val num " + (today > 0 ? "pd-g" : today < 0 ? "pd-r" : "");
+    }
+    setTxt("[data-avm=npos]", online ? String(pos.length) : "—");
+    const byTicket = new Map(pos.map((p) => [String(p.ticket), p]));
+    sh.querySelectorAll("tr[data-ticket]").forEach((tr) => {
+      const p = byTicket.get(String(tr.dataset.ticket)); if (!p) return;
+      const pl = Number(p.profit) || 0;
+      const px = tr.querySelector("[data-live=px]");
+      const plEl = tr.querySelector("[data-live=pl]");
+      if (px && px.textContent !== String(p.price)) px.textContent = String(p.price);
+      if (plEl) {
+        const t = sgn(pl);
+        if (plEl.textContent !== t) plEl.textContent = t;
+        plEl.className = "num " + (pl > 0 ? "pd-g" : pl < 0 ? "pd-r" : "");
+      }
+    });
+    const dis = !online || !!D.detailBusy;
+    ["pdAvSym", "pdAvLots", "pdAvBuy", "pdAvSell"].forEach((id) => {
+      const el = document.getElementById(id); if (el) el.disabled = dis;
+    });
+    sh.querySelectorAll("[data-avclose]").forEach((b) => { b.disabled = !!D.detailBusy; });
   }
   function renderAvDetail(focusClose) {
     const id = D.detailId;
@@ -573,6 +636,17 @@ window.FleetMobileSheet = (function () {
     const eq = Number(a.equity) || 0;
     const col = colorOf(a.id);
     const stCls = online ? "on" : a.link === "error" ? "err" : "";
+    // 结构不变时只改数字，避免轮询重写把横向滚动打回、打断平仓点击
+    const structKey = JSON.stringify([id, online, a.link, a.alias, a.login, a.group, !!D.detailBusy,
+      pos.slice().sort((x, y) => String(x.ticket).localeCompare(String(y.ticket), undefined, { numeric: true }))
+        .map((p) => [p.ticket, p.side, p.volume, p.symbol, p.openPrice, p.magic])]);
+    if (!focusClose && sh._avKey === structKey && sh.querySelector(".pd-avmetrics")) {
+      patchAvLive(sh, a, pos, online, bal, eq, fl, today, ccy);
+      return;
+    }
+    const keptSheet = sh.scrollTop;
+    const tw0 = sh.querySelector(".pd-avtw");
+    const keptTw = tw0 ? { l: tw0.scrollLeft, t: tw0.scrollTop } : null;
     const posRows = !online
       ? `<p class="pd-avempty">该账户不在线：先在账号页登录。</p>`
       : !pos.length
@@ -585,18 +659,19 @@ window.FleetMobileSheet = (function () {
             const sc = p.side === "buy" ? "pd-g" : "pd-r";
             const pl = Number(p.profit) || 0;
             const plc = pl > 0 ? "pd-g" : pl < 0 ? "pd-r" : "";
-            return `<tr>
+            return `<tr data-ticket="${esc(p.ticket)}">
               <td>${esc(p.symbol)}</td>
               <td class="${sc}">${side}</td>
               <td class="num">${nf(p.volume)}</td>
               <td class="num">${esc(p.openPrice)}</td>
-              <td class="num">${esc(p.price)}</td>
-              <td class="num ${plc}">${sgn(pl)}</td>
+              <td class="num" data-live="px">${esc(p.price)}</td>
+              <td class="num ${plc}" data-live="pl">${sgn(pl)}</td>
               <td class="num">${p.magic == null ? "—" : esc(p.magic)}</td>
               <td><button type="button" class="pd-avbtn danger" data-avclose="${esc(a.id)}:${esc(p.ticket)}" ${D.detailBusy ? "disabled" : ""}>平仓</button></td>
             </tr>`;
           }).join("")}
           </tbody></table></div>`;
+    sh._avKey = structKey;
     sh.innerHTML = `
       <div class="pd-avhd" style="--c:${col}">
         <div class="pd-avhd-l">
@@ -606,11 +681,11 @@ window.FleetMobileSheet = (function () {
         <button type="button" class="pd-avx" id="pdAvClose" aria-label="关闭">×</button>
       </div>
       <div class="pd-avmetrics">
-        <div class="pd-avm"><div class="lab">余额</div><div class="val num">${nf(bal)} <small>${esc(ccy)}</small></div></div>
-        <div class="pd-avm"><div class="lab">净值</div><div class="val num">${nf(eq)}</div></div>
-        <div class="pd-avm"><div class="lab">浮动盈亏</div><div class="val num ${fl > 0 ? "pd-g" : fl < 0 ? "pd-r" : ""}">${online ? sgn(fl) : "—"}</div></div>
-        <div class="pd-avm"><div class="lab">今日平仓</div><div class="val num ${today > 0 ? "pd-g" : today < 0 ? "pd-r" : ""}">${sgn(today)}</div></div>
-        <div class="pd-avm"><div class="lab">持仓笔数</div><div class="val num">${online ? pos.length : "—"}</div></div>
+        <div class="pd-avm"><div class="lab">余额</div><div class="val num" data-avm="bal">${nf(bal)} <small>${esc(ccy)}</small></div></div>
+        <div class="pd-avm"><div class="lab">净值</div><div class="val num" data-avm="eq">${nf(eq)}</div></div>
+        <div class="pd-avm"><div class="lab">浮动盈亏</div><div class="val num ${fl > 0 ? "pd-g" : fl < 0 ? "pd-r" : ""}" data-avm="fl">${online ? sgn(fl) : "—"}</div></div>
+        <div class="pd-avm"><div class="lab">今日平仓</div><div class="val num ${today > 0 ? "pd-g" : today < 0 ? "pd-r" : ""}" data-avm="today">${sgn(today)}</div></div>
+        <div class="pd-avm"><div class="lab">持仓笔数</div><div class="val num" data-avm="npos">${online ? pos.length : "—"}</div></div>
       </div>
       <div class="pd-avsec">
         <div class="pd-avsec-t">持仓</div>
@@ -626,23 +701,10 @@ window.FleetMobileSheet = (function () {
         </div>
         <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。</p>
       </div>`;
-    const closeBtn = document.getElementById("pdAvClose");
-    if (closeBtn) {
-      closeBtn.onclick = () => closeAvDetail();
-      if (focusClose) try { closeBtn.focus(); } catch (e) { /* */ }
-    }
-    sh.querySelectorAll("[data-avclose]").forEach((b) => {
-      b.onclick = () => {
-        const [aid, tk] = b.dataset.avclose.split(":");
-        const FT = window.FleetTrade;
-        if (FT && FT.closeTicket) FT.closeTicket(aid, tk);
-        else if (typeof closeTicket === "function") closeTicket(aid, tk);
-      };
-    });
-    const buy = document.getElementById("pdAvBuy");
-    const sell = document.getElementById("pdAvSell");
-    if (buy) buy.onclick = () => placeAvOrder("buy");
-    if (sell) sell.onclick = () => placeAvOrder("sell");
+    sh.scrollTop = keptSheet;
+    const tw1 = sh.querySelector(".pd-avtw");
+    if (tw1 && keptTw) { tw1.scrollLeft = keptTw.l; tw1.scrollTop = keptTw.t; }
+    bindAvDetailHandlers(sh, focusClose);
     if (keepId && !focusClose) {
       const el = document.getElementById(keepId);
       if (el) { try { el.focus(); el.setSelectionRange(selStart, selEnd); } catch (e) { /* */ } }

@@ -188,6 +188,16 @@ function once(key, value, fn) {
   fn();
   ui.lastRender[key] = s;   // 成功后再记下，避免渲染抛错后永远不重试（经典统计曾因此空白）
 }
+/** 重建表格前保存、重建后恢复横向/纵向滚动（手机持仓表左右滑不会被轮询打回） */
+function withTableScroll(sel, fn) {
+  const root = typeof sel === "string" ? $(sel) : sel;
+  if (!root) { fn(); return; }
+  const wraps = [...root.querySelectorAll(".tablewrap, .q-pos-tw, .q-tw, .al-tw, .pd-avtw")];
+  const kept = wraps.map((w) => ({ l: w.scrollLeft, t: w.scrollTop }));
+  fn();
+  const after = [...root.querySelectorAll(".tablewrap, .q-pos-tw, .q-tw, .al-tw, .pd-avtw")];
+  kept.forEach((k, i) => { if (after[i]) { after[i].scrollLeft = k.l; after[i].scrollTop = k.t; } });
+}
 
 function render() {
   const st = ui.state; if (!st) return;
@@ -388,7 +398,7 @@ function renderAccounts() {
   list.forEach((a) => { ui.live[a.id + ":bal"] = money(a.balance); ui.live[a.id + ":eq"] = money(a.equity); ui.live[a.id + ":fl"] = money(a.floating, true); ui.live[a.id + ":pos"] = String(a.positionsCount); });
   const view = list.map((a) => [a.id, a.alias, a.login, a.server, a.group, a.enabled, a.link, a.linkError,
     a.strategies.map((s) => s.running), a.terminal?.trade_allowed, a.ownedTerminal, a.has_password, ui.selected.has(a.id), a.terminal_path, a.lot_multiplier, a.symbol_suffix]);
-  once("acc", [view, ui.search, ui.group], () => {
+  once("acc", [view, ui.search, ui.group], () => { withTableScroll("#accList", () => {
     if (!list.length) {
       $("#accList").innerHTML = `<div class="empty"><h2>${st.accounts.length ? "没有匹配的账户" : "还没有账户"}</h2><p>${st.accounts.length ? "换个关键词，或点「添加并登录」。" : "点「添加并登录」，填账号、交易密码、服务器即可：程序会自动复制一份独立的 MT5、启动并登录（算法交易默认关闭，交易页可一键开启）。也可以一次粘贴多个账户。"}</p><div class="row"><button class="btn primary" data-act="quick">添加并登录</button></div></div>`;
       return;
@@ -415,7 +425,7 @@ function renderAccounts() {
     $("#accList").innerHTML = `<div class="row" style="margin-bottom:8px"><label class="cbcell"><input type="checkbox" id="selAll" ${allOn ? "checked" : ""} aria-label="勾选当前列表"></label><span class="muted">勾选当前列表 · 已选 ${selIds().length}</span></div>
       <div class="cards">${cards}</div>
       <div class="tablewrap desk"><table><thead><tr><th class="cbcell"></th><th>账户</th><th>余额</th><th>净值</th><th>浮盈</th><th>持仓</th><th>策略</th><th>终端</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  });
+ }); });
 }
 
 function accountForm(acc) {
@@ -600,7 +610,7 @@ function renderTrade() {
   });
   const rows = sel.flatMap((a) => a.positions.map((p) => ({ a, p })));
   rows.forEach(({ a, p }) => { const k = `${a.id}:${p.ticket}`; ui.live[k + ":px"] = String(p.price); ui.live[k + ":pl"] = money(p.profit, true); ui.live[k + ":sl"] = p.sl ? String(p.sl) : "—"; ui.live[k + ":tp"] = p.tp ? String(p.tp) : "—"; });
-  once("pos", rows.map(({ a, p }) => [a.id, p.ticket, p.volume]), () => {
+  once("pos", rows.map(({ a, p }) => [a.id, p.ticket, p.volume]), () => { withTableScroll("#posList", () => {
     if (!rows.length) {
       $("#posList").innerHTML = `<div class="empty"><h2>已选账户没有持仓</h2><p>登录后如果策略或手工单开了仓，会出现在这里。</p></div>`;
       return;
@@ -612,12 +622,12 @@ function renderTrade() {
       <div class="tablewrap desk"><table><thead><tr><th>账户</th><th>单号</th><th>品种</th><th>方向</th><th>手数</th><th>开仓</th><th>现价</th><th>SL</th><th>TP</th><th>盈亏</th><th>魔术号</th><th></th></tr></thead><tbody>
       ${rows.map(({ a, p }) => `<tr><td>${esc(a.alias)}</td><td class="num">${p.ticket}</td><td>${esc(p.symbol)}</td><td class="${p.side === "buy" ? "up-t" : "down-t"}">${p.side === "buy" ? "多" : "空"}</td><td class="num">${p.volume.toFixed(2)}</td><td class="num">${p.openPrice}</td><td class="num">${L(`${a.id}:${p.ticket}:px`)}</td><td class="num muted">${L(`${a.id}:${p.ticket}:sl`)}</td><td class="num muted">${L(`${a.id}:${p.ticket}:tp`)}</td><td>${L(`${a.id}:${p.ticket}:pl`)}</td><td class="num">${p.magic}</td><td><button class="btn sm" data-close-ticket="${a.id}:${p.ticket}">平仓</button></td></tr>`).join("")}
       </tbody></table></div>`;
-  });
+ }); });
   const ords = sel.flatMap((a) => (a.orders || []).map((o) => ({ a, o })));
-  once("ords", ords.map(({ a, o }) => [a.id, o.ticket, o.price]), () => {
+  once("ords", ords.map(({ a, o }) => [a.id, o.ticket, o.price]), () => { withTableScroll("#ordList", () => {
     $("#ordList").innerHTML = ords.length ? `<div class="panel"><h3>挂单（${ords.length}）</h3><div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>账户</th><th>单号</th><th>品种</th><th>类型</th><th>手数</th><th>价格</th><th>SL</th><th>TP</th><th>魔术号</th></tr></thead><tbody>
       ${ords.map(({ a, o }) => `<tr><td>${esc(a.alias)}</td><td class="num">${o.ticket}</td><td>${esc(o.symbol)}</td><td>${ORDER_TYPE[o.type] || o.type}</td><td class="num">${o.volume}</td><td class="num">${o.price}</td><td class="num">${o.sl || "—"}</td><td class="num">${o.tp || "—"}</td><td class="num">${o.magic}</td></tr>`).join("")}</tbody></table></div></div>` : "";
-  });
+ }); });
   $("#tradeNote").textContent = "实盘：所有操作直接发送到券商服务器。";
 }
 
