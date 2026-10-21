@@ -1,4 +1,4 @@
-"""v1.5.9：头像详情一键全部清仓 / 平全部空 / 平全部多。
+"""v1.5.10：头像详情一键清仓（完整包）一键全部清仓 / 平全部空 / 平全部多。
 python tests/test_panel159.py
 """
 import sys
@@ -15,7 +15,7 @@ def check(name, cond, info=""):
     if not cond:
         fails.append(name)
 
-check("版本 1.5.9", __version__ == "1.5.9", __version__)
+check("版本 1.5.10", __version__ == "1.5.10", __version__)
 
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -23,8 +23,8 @@ app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
 desk = (ROOT / "static" / "desk.js").read_text(encoding="utf-8")
 dcss = (ROOT / "static" / "desk.css").read_text(encoding="utf-8")
 
-check("更新说明 v1.5.9", "## v1.5.9" in notes and ("清仓" in notes or "平全部" in notes))
-check("README 本次更新", "v1.5.9" in readme and ("清仓" in readme or "平全部" in readme))
+check("更新说明 v1.5.10", "## v1.5.10" in notes and ("清仓" in notes or "平全部" in notes))
+check("README 本次更新", "v1.5.10" in readme and ("清仓" in readme or "平全部" in readme))
 
 check("FleetTrade.closeByModes", "function closeByModes" in app and "closeByModes" in app.split("window.FleetTrade")[1][:200])
 check("closeByModes 单户 ids", 'ids: [accId]' in app and 'filter: { mode }' in app)
