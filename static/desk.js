@@ -402,38 +402,33 @@ window.FleetMobileSheet = (function () {
     if (animate) { top.classList.remove("flash"); void top.offsetWidth; top.classList.add("flash"); }
   }
 
-  // ---------------- 头像 ----------------
-  const SKIN = ["#f3dcc4", "#efd2b2", "#e8c39e", "#f6e3d0", "#e2b893"];
-  const HAIR = ["#1d1d1f", "#2b211b", "#3b2a20", "#d6a93a", "#6b3a1e", "#1d1d1f"];
+  // ---------------- 头像（10 套半写实女性 PNG，login/id hash 稳定映射 0–9） ----------------
+  // 风格：0黑长直耳机 1酒红波波珍珠 2金发双马尾 3棕发细框眼镜 4粉短发心夹
+  //       5银白长发 6深紫公主切 7茶金侧披 8蓝黑挑染项圈 9红棕高马尾
+  const FACE_N = 10;
+  const FACE_SIZE = 192;
+  const FACE_SRC = Array.from({ length: FACE_N }, (_, i) => `/static/avatars/face-${i}.png`);
+  const FACE_IMGS = FACE_SRC.map((src) => {
+    const im = new Image();
+    im.decoding = "async";
+    im.src = src;
+    return im;
+  });
+  function faceStyleOf(seed) { return (seed >>> 0) % FACE_N; }
   function drawFace(canvas, seed) {
-    const c = canvas.getContext("2d"); const R = rng(seed); const P = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h); };
-    c.clearRect(0, 0, 16, 16);
-    const skin = SKIN[Math.floor(R() * SKIN.length)], hairC = HAIR[Math.floor(R() * HAIR.length)], style = Math.floor(R() * 6);
-    const red = "#d0283f", redD = "#9e1830", dark = "#1d1d1f";
-    // 衣服 + 领口
-    P(3, 13, 10, 3, red); P(2, 14, 12, 2, red); P(7, 13, 2, 2, dark); P(5, 13, 1, 1, redD); P(10, 13, 1, 1, redD);
-    // 脖子 + 脸
-    P(7, 12, 2, 1, skin); P(4, 4, 8, 8, skin); P(5, 12, 6, 1, skin); P(4, 11, 1, 1, "rgba(0,0,0,0)");
-    c.clearRect(4, 11, 1, 1); c.clearRect(11, 11, 1, 1); P(5, 11, 6, 1, skin);
-    // 耳机
-    P(2, 6, 2, 4, red); P(12, 6, 2, 4, red); P(2, 6, 1, 4, redD); P(13, 6, 1, 4, redD);
-    // 发型
-    if (style === 0) { P(4, 2, 8, 2, hairC); P(4, 4, 1, 2, hairC); P(11, 4, 1, 2, hairC); P(5, 4, 3, 1, hairC); }
-    else if (style === 1) { P(4, 3, 8, 1, hairC); for (let x = 4; x < 12; x += 2) P(x, 2, 1, 1, hairC); P(4, 4, 1, 1, hairC); P(11, 4, 1, 1, hairC); }
-    else if (style === 2) { P(4, 2, 8, 2, hairC); P(3, 3, 1, 8, hairC); P(12, 3, 1, 8, hairC); P(4, 4, 2, 2, hairC); P(10, 4, 2, 1, hairC); }
-    else if (style === 3) { for (let x = 3; x < 13; x++) P(x, 2 + ((x * 7) % 3 === 0 ? 0 : 1), 1, 2, hairC); P(4, 1, 2, 1, hairC); P(7, 1, 3, 1, hairC); P(3, 4, 1, 3, hairC); P(12, 4, 1, 3, hairC); }
-    else if (style === 4) { P(5, 3, 6, 1, hairC); P(4, 9, 8, 3, hairC); P(6, 9, 4, 1, skin); }
-    else { P(4, 2, 8, 2, hairC); P(6, 0, 4, 2, hairC); P(4, 4, 1, 3, hairC); P(11, 4, 1, 3, hairC); }
-    // 五官
-    const glasses = R() < 0.25, brow = R() < 0.6, smile = R();
-    if (brow) { P(5, 6, 2, 1, dark); P(9, 6, 2, 1, dark); }
-    P(6, 7, 1, 1, dark); P(9, 7, 1, 1, dark);
-    if (glasses) { c.strokeStyle = dark; c.lineWidth = 1; c.strokeRect(4.5, 6.5, 3, 2); c.strokeRect(8.5, 6.5, 3, 2); P(7, 7, 2, 1, dark); }
-    if (style !== 4) { if (smile < 0.5) { P(6, 10, 4, 1, dark); P(5, 9, 1, 1, dark); P(10, 9, 1, 1, dark); } else if (smile < 0.8) P(6, 10, 4, 1, dark); else { P(6, 9, 4, 2, dark); P(7, 9, 2, 1, "#fff"); } }
-    else P(6, 10, 4, 1, dark);
-    if (R() < 0.2 && style !== 4) P(6, 9, 4, 1, hairC);
-    P(7, 8, 1, 1, "rgba(0,0,0,.18)");
+    if (!canvas) return;
+    const style = faceStyleOf(seed);
+    if (canvas.width !== FACE_SIZE) { canvas.width = FACE_SIZE; canvas.height = FACE_SIZE; }
+    const c = canvas.getContext("2d");
+    const im = FACE_IMGS[style];
+    const paint = () => {
+      c.clearRect(0, 0, FACE_SIZE, FACE_SIZE);
+      if (im.naturalWidth) c.drawImage(im, 0, 0, FACE_SIZE, FACE_SIZE);
+    };
+    if (im.complete && im.naturalWidth) paint();
+    else im.addEventListener("load", paint, { once: true });
   }
+
   function renderAvatars(sc) {
     const key = sc.map((a) => a.id + a.alias + a.group + a.login).join("|");
     const row = $("pdAvs");
@@ -442,7 +437,7 @@ window.FleetMobileSheet = (function () {
       if (!sc.length) { row.innerHTML = `<div class="pd-empty-av">还没有账户 · 在账号页添加后，每个账户会在这里显示一张卡片</div>`; return; }
       row.innerHTML = sc.map((a, i) => `<div class="pd-av" data-av="${esc(a.id)}" role="button" tabindex="0" style="--c:${colorOf(a.id)}" title="点开 ${esc(a.alias)} · ${esc(a.login)}">
         <span class="n">${pad(i + 1)}</span><span class="s"></span><span class="sig">${[3, 5, 7, 9].map((h) => `<i style="height:${h - 1}px"></i>`).join("")}</span>
-        <canvas width="16" height="16"></canvas><div class="nm">${esc(a.alias)}</div><div class="rl">${esc((a.group || "未分组").toUpperCase())}</div><div class="pl"></div></div>`).join("");
+        <canvas width="192" height="192"></canvas><div class="nm">${esc(a.alias)}</div><div class="rl">${esc((a.group || "未分组").toUpperCase())}</div><div class="pl"></div></div>`).join("");
       row.querySelectorAll(".pd-av").forEach((el) => {
         drawFace(el.querySelector("canvas"), hash(accById(el.dataset.av)?.login || el.dataset.av));
         el.addEventListener("click", (e) => { e.preventDefault(); openAvDetail(el.dataset.av); });

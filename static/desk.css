@@ -159,7 +159,7 @@ body.desk-mode .warnbar{background:#fff3f5;border-color:#e9a5b4;color:#b0203c;bo
 .pd-av .sig{position:absolute;right:10px;top:40px;display:flex;gap:1px;align-items:flex-end;height:8px}
 .pd-av .sig i{width:2px;background:var(--c);opacity:.25;border-radius:1px}
 .pd-av .sig i.on{opacity:1}
-.pd-av canvas{width:72px;height:72px;image-rendering:pixelated;display:block;margin:6px auto 4px}
+.pd-av canvas{width:72px;height:72px;image-rendering:auto;display:block;margin:6px auto 4px;border-radius:50%;object-fit:cover;background:#f3f3f0}
 .pd-av .nm{font:700 11px var(--pd-mono);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pd-av .rl{font:700 10px var(--pd-mono);color:var(--c);letter-spacing:.05em;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pd-av .pl{font:10px var(--pd-mono);margin-top:3px;font-variant-numeric:tabular-nums;color:var(--pd-mut)}
@@ -217,7 +217,7 @@ body.desk-mode .warnbar{background:#fff3f5;border-color:#e9a5b4;color:#b0203c;bo
 .pd-av.pd-av-on{border-color:var(--c);box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 22%,transparent)}
 .pd-avs{padding:10px 12px}
 @media (max-width:760px){
-  .pd-av canvas{width:56px;height:56px;margin:4px auto 2px}
+  .pd-av canvas{width:56px;height:56px;margin:4px auto 2px;border-radius:50%}
   .pd-av{padding:6px 4px 7px}
   .pd-avrow{grid-auto-columns:minmax(88px,1fr);gap:7px}
 }
