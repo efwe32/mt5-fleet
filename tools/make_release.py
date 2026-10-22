@@ -49,8 +49,24 @@ def content_of(rel: str) -> bytes:
     return b
 
 
+def ensure_avatar_pngs(root: Path) -> None:
+    """Decode static/avatars/face-*.png.b64 → face-*.png (repo stores text; zip needs PNG)."""
+    import base64
+    av = root / "static" / "avatars"
+    if not av.is_dir():
+        return
+    for b64p in sorted(av.glob("face-*.png.b64")):
+        png = Path(str(b64p)[:-4])  # strip .b64
+        raw = base64.b64decode("".join(b64p.read_text(encoding="ascii").split()))
+        if not png.is_file() or png.read_bytes() != raw:
+            png.write_bytes(raw)
+
+
 def collect() -> list[str]:
+    ensure_avatar_pngs(ROOT)
     files = current_app_files(ROOT)
+    # Prefer PNG in the zip; keep .b64 out of published app package
+    files = [f for f in files if not f.replace("\\", "/").endswith(".png.b64")]
     bad = [f for f in files if not is_app_path(f)]
     if bad:
         raise SystemExit(f"[错误] 不允许发布的文件：{bad}")
