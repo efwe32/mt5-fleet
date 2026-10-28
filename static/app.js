@@ -245,7 +245,7 @@ function render() {
   tclock();
   if (ui.tab === "settings") { renderSettingsInfo(); renderRemote(st.remote); }
   if (ui.tab === "accounts") renderAccounts();
-  if (ui.tab === "trade") { if (window.Quick) Quick.onState(st); if (window.Algo) Algo.onState(st); renderTrade(); }
+  if (ui.tab === "trade") { if (window.Quick) Quick.onState(st); if (window.Algo) Algo.onState(st); if (window.FleetPending) FleetPending.onState(st); renderTrade(); }
   if (ui.tab === "strategy") renderStrategy();
   if (ui.tab === "stats") { renderStats(); if (window.Desk) Desk.onState(st); }
   applyLive();
@@ -1255,7 +1255,30 @@ async function placeOrderFor(accId, order) {
     run: () => { runBatch("单账户下单", "/api/trade/order", { ids: [accId], order }); },
   });
 }
-window.FleetTrade = { closeTicket, closeByModes, placeOrderFor, confirmBox, toast, api, runBatch };
+/** 预订单薄封装：对指定账户列表挂限价/止损单（供 pending.js / 外部调用） */
+async function pendingOrder(ids, order) {
+  if (!ids || !ids.length) { toast("请先选择账户", true); return; }
+  if (!order || !order.symbol) { toast("请填写品种", true); return; }
+  if (!(Number(order.lots) > 0)) { toast("手数需大于 0", true); return; }
+  if (!(Number(order.price) > 0)) { toast("挂单需要填写价格", true); return; }
+  if (!order.kind || !String(order.kind).includes("_")) { toast("预订单类型无效", true); return; }
+  order = { magic: 880000, comment: "fleet pending", scale_groups: [], ...order };
+  let pv;
+  try { pv = await api("/api/trade/preview", { ids, order }); } catch (e) { toast(e.message, true); return; }
+  const sltp = (Number(order.sl) || Number(order.tp)) ? `，SL ${order.sl || 0} / TP ${order.tp || 0}（${order.sltp_mode === "points" ? "点数" : "价格"}）` : "";
+  const table = `<div class="tablewrap"><table><thead><tr><th>账户</th><th>分组</th><th>净值</th><th>系数</th><th>手数</th><th>备注</th></tr></thead><tbody>
+    ${(pv.rows || []).map((r) => `<tr><td>${esc(r.alias)}</td><td>${esc(r.group)}</td><td class="num">${fmt(r.equity)}</td><td class="num">${r.factor}</td><td class="num">${r.lots}</td><td class="small ${r.warn ? "down-t" : "muted"}">${esc(r.warn || "手数会按品种步长向下取整")}</td></tr>`).join("")}
+    </tbody></table></div>`;
+  confirmBox({
+    title: `预订单 ${KIND_LABEL[order.kind] || order.kind} ${order.symbol}`,
+    wide: true,
+    desc: `<div>将对 ${(pv.rows || []).filter((r) => r.online).length} 个在线账户${KIND_LABEL[order.kind] || order.kind} <b>${esc(order.symbol)}</b> @ ${esc(order.price)}${sltp}，魔术号 ${esc(order.magic)}。</div>`,
+    body: table, label: "确认挂单", tone: String(order.kind).startsWith("buy") ? "up" : "danger",
+    run: () => { runBatch("预订单", "/api/trade/order", { ids, order }); },
+  });
+}
+window.FleetTrade = { closeTicket, closeByModes, placeOrderFor, pendingOrder, confirmBox, toast, api, runBatch };
+
 
 renderNav();
 poll().then(() => { updStartup(); if (ui.tab === "settings") fillSettings(); if (ui.tab === "log") loadLogs(); if (ui.tab === "stats") loadStats(); if (ui.state) { $("#oGroups").value = (ui.state.settings.scale_groups || []).join(","); if (ui.state.settings.default_symbol) $("#oSymbol").value = ui.state.settings.default_symbol; } });

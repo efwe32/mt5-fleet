@@ -112,6 +112,36 @@
           <div class="qp-side" id="qSide"></div>
         </div>
 
+        <!-- 预订单：与快捷交易分开；共用所选账户 / 品种 / 手数 -->
+        <div class="panel pend-panel" id="pendPanel">
+          <div class="pend-head">
+            <h2>预订单</h2>
+            <div class="pd-pick" id="pPickWrap">
+              <button type="button" class="pd-pickbtn" id="pPick" aria-haspopup="true" aria-expanded="false">选择账户 ▾</button>
+              <div class="pd-pop hidden" id="pPop" role="dialog" aria-label="选择预订单账户"></div>
+            </div>
+          </div>
+          <p class="small muted pend-hint" style="margin:0 0 10px">批量挂单：自选账户（默认同步快捷面板，可单独改）；品种与手数跟快捷面板。到价后自动挂限价或止损单。</p>
+          <div class="pend-cfg">
+            <label>挂单价（必填）<input class="qp-in num" id="pPrice" inputmode="decimal" placeholder="到价买入/卖出" autocomplete="off"></label>
+            <label>止损 SL（0=不设）<input class="qp-in num" id="pSL" inputmode="decimal" value="0"></label>
+            <label>止盈 TP（0=不设）<input class="qp-in num" id="pTP" inputmode="decimal" value="0"></label>
+            <label>止损止盈单位
+              <select class="qp-in" id="pUnit">
+                <option value="price" selected>价格</option>
+                <option value="points">点数（离开仓价）</option>
+              </select>
+            </label>
+          </div>
+          <div class="pend-btns">
+            <button type="button" class="qb qb-buy" id="pHangLong" title="到价买入：价格≤卖价用买入限价，否则买入止损">挂多</button>
+            <button type="button" class="qb qb-sell" id="pHangShort" title="到价卖出：价格≥买价用卖出限价，否则卖出止损">挂空</button>
+            <button type="button" class="qb qb-cx" id="pCancelSym" title="撤销所选账户在当前品种上的全部挂单">撤销本品种挂单</button>
+          </div>
+          <p class="small muted pend-note" id="pNote">先选择账户；品种与手数跟快捷面板。当前报价见上方。</p>
+          <div class="pend-list" id="pendList"><p class="small muted" style="margin:0">所选账户暂无挂单。</p></div>
+        </div>
+
         <!-- 持仓列表：从上方快捷交易所选账户里挑一个看，归集该账户全部持仓 -->
         <div class="panel q-pospanel" id="qPosPanel">
           <div class="q-poshead">
@@ -450,5 +480,6 @@
 <script src="/static/quick.js?v=__FLEET_VER__"></script>
 <script src="/static/algo.js?v=__FLEET_VER__"></script>
 <script src="/static/app.js?v=__FLEET_VER__"></script>
+<script src="/static/pending.js?v=__FLEET_VER__"></script>
 </body>
 </html>

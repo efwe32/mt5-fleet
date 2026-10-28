@@ -108,6 +108,49 @@ details.adv>#tradeEmpty,details.adv>#tradeBody{padding:16px}
   .q-px{width:40px;height:40px;font-size:22px}
   .q-pos-cmt{max-width:80px}
 }
+
+/* 交易页：预订单（与快捷交易分开，共用账户/品种/手数） */
+.pend-panel{margin-bottom:16px;max-width:1100px;background:#000;border:1px solid #2c2c2c;border-radius:8px;padding:12px 14px;color:#e8e8e8;
+  --pd-line:#2c2c2c;--line:#2a2a2a;--muted:#9a9a9a;--fg:#f2f2f2}
+.pend-panel h2{margin:0;font-size:15px;font-weight:600;color:#fff}
+.pend-panel .pd-pickbtn{background:#111;color:#e8e8e8;border-color:#3a3a3a;max-width:280px}
+.pend-panel .pd-pickbtn:hover,.pend-panel .pd-pickbtn[aria-expanded="true"]{background:#1a1a1a;border-color:#00bcd4;color:#fff}
+.pend-panel .pd-pickbtn.on{background:#00363d;color:#7ff3ff;border-color:#00bcd4}
+.pend-panel .pd-pop{left:auto;right:0;width:380px;background:#0d0d0d;border-color:#333;box-shadow:0 14px 36px rgba(0,0,0,.6);color:#eee}
+.pend-panel .pd-pop .pp-row button{background:#1b1b1b;border-color:#333;color:#ddd}
+.pend-panel .pd-pop .pp-row button:hover{background:#262626}
+.pend-panel .pd-pop label:hover{background:#161616}
+.pend-panel .pd-pop label input{accent-color:#00bcd4;width:16px;height:16px}
+.pend-panel .pd-pop label .fl{font:12px Consolas,monospace;min-width:70px;text-align:right;color:#aaa}
+.pend-panel .pd-pop .pp-foot button{background:#00bcd4;color:#001316}
+.pend-head{align-items:center}
+@media (max-width:560px){
+  .pend-panel .pd-pick{width:100%}
+  .pend-panel .pd-pickbtn{width:100%;max-width:none;text-align:left}
+  .pend-panel .pd-pop{position:fixed;left:12px;right:12px;top:auto;bottom:16px;width:auto;max-width:none;max-height:min(70vh,560px);overflow:auto;z-index:90}
+}
+
+.pend-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.pend-hint{flex:1;min-width:180px}
+.pend-cfg{display:flex;flex-wrap:wrap;gap:10px 14px;margin-bottom:12px;font-size:13px;color:#bbb}
+.pend-cfg label{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pend-cfg .qp-in{min-width:100px}
+#pPrice{width:140px;font-size:17px}
+#pSL,#pTP{width:100px}
+#pUnit{min-width:140px;font-family:var(--pd-sans,"Microsoft YaHei",sans-serif);font-size:13px}
+.pend-btns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr);gap:10px 12px;margin-bottom:10px}
+.pend-btns .qb{min-height:50px;font-size:18px}
+.pend-note{margin:0 0 10px}
+.pend-list{margin-top:4px}
+.pend-tw{max-height:280px}
+@media (max-width:760px){
+  .pend-panel{padding:12px 10px}
+  .pend-btns{grid-template-columns:1fr 1fr}
+  .pend-btns #pCancelSym{grid-column:1 / -1}
+  .pend-btns .qb{min-height:52px;font-size:17px}
+  .pend-cfg label{width:100%}
+  #pPrice,#pSL,#pTP,#pUnit{flex:1;min-width:0;width:auto}
+}
 /* 算法交易开关：和上面的快捷交易面板同一套黑底（选择账户弹层默认是收益页的白底，这里必须盖掉） */
 .al-panel{margin-bottom:16px;max-width:1100px;background:#000;border:1px solid #2c2c2c;color:#f2f2f2;
   --pd-line:#2c2c2c;--pd-line2:#222;--pd-ink:#f2f2f2;--pd-mut:#9a9a9a;--pd-faint:#6c6c6c;--pd-g:#33e07a;
