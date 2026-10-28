@@ -272,6 +272,15 @@ body.pd-av-open{overflow:hidden}
 .pd-avbtn.danger{background:#fff;border-color:#e8b4bc;color:#c8203f;min-height:34px;padding:0 12px;font-size:13px}
 .pd-avbtn.danger:hover{background:#fff5f6}
 .pd-avhint{font:11px var(--pd-mono);color:var(--pd-mut);margin:8px 0 0}
+.pd-avpend{border-top:1px dashed var(--pd-line);margin-top:4px;padding-top:10px}
+.pd-avpend-form select{min-height:40px;min-width:140px;border:1px solid var(--pd-line);border-radius:10px;padding:8px 10px;font:600 13px var(--pd-sans);background:#fff;color:var(--pd-ink)}
+.pd-avpend-form #pdAvPendPrice{min-width:130px}
+@media (max-width:560px){
+  .pd-avpend-form label,.pd-avpend-form select,.pd-avpend-form #pdAvHangLong,.pd-avpend-form #pdAvHangShort{width:100%}
+  .pd-avpend-form select,.pd-avpend-form input{width:100%;min-height:46px;font-size:15px;box-sizing:border-box}
+  .pd-avpend-form #pdAvHangLong,.pd-avpend-form #pdAvHangShort{min-height:48px;font-size:16px}
+}
+
 @media (max-width:760px){
   .pd-avmetrics{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pd-avform{flex-direction:column;align-items:stretch}

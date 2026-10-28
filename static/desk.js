@@ -525,7 +525,11 @@ window.FleetMobileSheet = (function () {
     m.classList.add("show");
     m.setAttribute("aria-hidden", "false");
     document.body.classList.add("pd-av-open");
-    D._avForm = { sym: prevSym || defaultSymFor(accById(id)), lots: prevLots || "0.01" };
+    D._avForm = {
+      sym: prevSym || defaultSymFor(accById(id)), lots: prevLots || "0.01",
+      price: (D._avForm && D._avForm.price) || "", sl: (D._avForm && D._avForm.sl) || "0",
+      tp: (D._avForm && D._avForm.tp) || "0", unit: (D._avForm && D._avForm.unit) || "price",
+    };
     renderAvDetail(true);
   }
   function closeAvDetail() {
@@ -543,9 +547,18 @@ window.FleetMobileSheet = (function () {
   function readAvForm() {
     const symEl = document.getElementById("pdAvSym");
     const lotsEl = document.getElementById("pdAvLots");
-    if (symEl) D._avForm = D._avForm || {}, D._avForm.sym = symEl.value.trim();
-    if (lotsEl) D._avForm = D._avForm || {}, D._avForm.lots = lotsEl.value.trim();
-    return D._avForm || { sym: "USDJPYc", lots: "0.01" };
+    const priceEl = document.getElementById("pdAvPendPrice");
+    const slEl = document.getElementById("pdAvPendSL");
+    const tpEl = document.getElementById("pdAvPendTP");
+    const unitEl = document.getElementById("pdAvPendUnit");
+    D._avForm = D._avForm || {};
+    if (symEl) D._avForm.sym = symEl.value.trim();
+    if (lotsEl) D._avForm.lots = lotsEl.value.trim();
+    if (priceEl) D._avForm.price = priceEl.value.trim();
+    if (slEl) D._avForm.sl = slEl.value.trim();
+    if (tpEl) D._avForm.tp = tpEl.value.trim();
+    if (unitEl) D._avForm.unit = unitEl.value === "points" ? "points" : "price";
+    return D._avForm || { sym: "USDJPYc", lots: "0.01", price: "", sl: "0", tp: "0", unit: "price" };
   }
   function bindAvDetailHandlers(sh, focusClose) {
     const closeBtn = document.getElementById("pdAvClose");
@@ -574,6 +587,10 @@ window.FleetMobileSheet = (function () {
     const sell = document.getElementById("pdAvSell");
     if (buy) buy.onclick = () => placeAvOrder("buy");
     if (sell) sell.onclick = () => placeAvOrder("sell");
+    const hangL = document.getElementById("pdAvHangLong");
+    const hangS = document.getElementById("pdAvHangShort");
+    if (hangL) hangL.onclick = () => placeAvPending("long");
+    if (hangS) hangS.onclick = () => placeAvPending("short");
   }
   function patchAvLive(sh, a, pos, online, bal, eq, fl, today, ccy) {
     const setTxt = (sel, t, clsName) => {
@@ -614,7 +631,7 @@ window.FleetMobileSheet = (function () {
       }
     });
     const dis = !online || !!D.detailBusy;
-    ["pdAvSym", "pdAvLots", "pdAvBuy", "pdAvSell"].forEach((id) => {
+    ["pdAvSym", "pdAvLots", "pdAvBuy", "pdAvSell", "pdAvPendPrice", "pdAvPendSL", "pdAvPendTP", "pdAvPendUnit", "pdAvHangLong", "pdAvHangShort"].forEach((id) => {
       const el = document.getElementById(id); if (el) el.disabled = dis;
     });
     sh.querySelectorAll("[data-avclose]").forEach((b) => { b.disabled = !!D.detailBusy; });
@@ -725,6 +742,18 @@ window.FleetMobileSheet = (function () {
           <button type="button" class="pd-avbtn sell" id="pdAvSell" ${!online || D.detailBusy ? "disabled" : ""}>开空</button>
         </div>
         <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。</p>
+      </div>
+      <div class="pd-avsec pd-avpend">
+        <div class="pd-avsec-t">预订单（仅本账户）</div>
+        <div class="pd-avform pd-avpend-form">
+          <label>挂单价（必填）<input type="number" id="pdAvPendPrice" step="any" inputmode="decimal" value="${esc(form.price || "")}" placeholder="到价买入/卖出" ${!online || D.detailBusy ? "disabled" : ""}></label>
+          <label>止损 SL（0=不设）<input type="number" id="pdAvPendSL" step="any" inputmode="decimal" value="${esc(form.sl != null ? form.sl : "0")}" ${!online || D.detailBusy ? "disabled" : ""}></label>
+          <label>止盈 TP（0=不设）<input type="number" id="pdAvPendTP" step="any" inputmode="decimal" value="${esc(form.tp != null ? form.tp : "0")}" ${!online || D.detailBusy ? "disabled" : ""}></label>
+          <label>止损止盈单位<select id="pdAvPendUnit" ${!online || D.detailBusy ? "disabled" : ""}><option value="price" ${(form.unit || "price") === "price" ? "selected" : ""}>价格</option><option value="points" ${form.unit === "points" ? "selected" : ""}>点数（离开仓价）</option></select></label>
+          <button type="button" class="pd-avbtn buy" id="pdAvHangLong" ${!online || D.detailBusy ? "disabled" : ""}>挂多</button>
+          <button type="button" class="pd-avbtn sell" id="pdAvHangShort" ${!online || D.detailBusy ? "disabled" : ""}>挂空</button>
+        </div>
+        <p class="pd-avhint">品种/手数同上。有报价时自动选限价或止损单；魔术号 880000 · 备注 fleet pending。</p>
       </div>`;
     sh.scrollTop = keptSheet;
     const tw1 = sh.querySelector(".pd-avtw");
@@ -752,6 +781,59 @@ window.FleetMobileSheet = (function () {
       await FT.placeOrderFor(id, {
         symbol: sym, kind, lots, scale_mode: "fixed", ref_equity: 0, scale_groups: [],
         sltp_mode: "price", sl: 0, tp: 0, magic: 880000, comment: "fleet avatar",
+      });
+    } finally {
+      D.detailBusy = false;
+      if (D.detailId) renderAvDetail(false);
+    }
+  }
+  async function placeAvPending(side) {
+    const id = D.detailId;
+    const a = accById(id);
+    if (!a) return;
+    const FT = window.FleetTrade;
+    if (a.link !== "online") { if (FT && FT.toast) FT.toast("账户不在线", true); return; }
+    const form = readAvForm();
+    const sym = (form.sym || "").trim();
+    const lots = Number(form.lots);
+    const price = Number(form.price);
+    const sl = Number(form.sl) || 0;
+    const tp = Number(form.tp) || 0;
+    const sltp_mode = form.unit === "points" ? "points" : "price";
+    if (!/^[A-Za-z0-9._#&+\-]{1,32}$/.test(sym)) { if (FT && FT.toast) FT.toast("请填写品种", true); return; }
+    if (!(lots > 0)) { if (FT && FT.toast) FT.toast("手数需大于 0", true); return; }
+    if (!(price > 0)) { if (FT && FT.toast) FT.toast("请填写挂单价", true); return; }
+    if (!FT || !FT.pendingOrder) { if (FT && FT.toast) FT.toast("交易接口未就绪，请刷新页面", true); return; }
+    let q = null;
+    try {
+      const FP = window.FleetPending;
+      const qSymEl = document.getElementById("qSym");
+      const sameSym = qSymEl && (qSymEl.value || "").trim() === sym;
+      if (sameSym && window.__quick && window.__quick.sum && window.__quick.sum.quote && (window.Quick && Quick.ids && Quick.ids().includes(id))) {
+        const sq = window.__quick.sum.quote;
+        if (sq && !sq.error) q = sq;
+      }
+      if (!q && FT.api) {
+        const j = await FT.api(`/api/quick/summary?symbol=${encodeURIComponent(sym)}&accounts=${encodeURIComponent(id)}`);
+        if (j && j.quote && !j.quote.error) q = j.quote;
+      }
+    } catch (e) { /* 无报价则回退限价 */ }
+    let kind, warn = false;
+    if (window.FleetPending && FleetPending.pickLongKind && FleetPending.pickShortKind) {
+      const pick = side === "long" ? FleetPending.pickLongKind(price, q) : FleetPending.pickShortKind(price, q);
+      kind = pick.kind; warn = !!pick.warn;
+    } else if (side === "long") {
+      if (!q || !(Number(q.ask) > 0)) { kind = "buy_limit"; warn = true; }
+      else kind = Number(price) <= Number(q.ask) ? "buy_limit" : "buy_stop";
+    } else {
+      if (!q || !(Number(q.bid) > 0)) { kind = "sell_limit"; warn = true; }
+      else kind = Number(price) >= Number(q.bid) ? "sell_limit" : "sell_stop";
+    }
+    D.detailBusy = true; renderAvDetail(false);
+    try {
+      await FT.pendingOrder([id], {
+        symbol: sym, kind, lots, price, scale_mode: "fixed", ref_equity: 0, scale_groups: [],
+        sltp_mode, sl, tp, magic: 880000, comment: "fleet pending",
       });
     } finally {
       D.detailBusy = false;
