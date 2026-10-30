@@ -13,7 +13,7 @@
   const LS = { accs: "fleet.quickAccs", lots: "fleet.quickLots", sym: "fleet.quickSym", mode: "fleet.quickMode", ref: "fleet.quickRef", only: "fleet.quickOnly" };
   const ACT = {
     buy: "一键开多", sell: "一键开空", pair: "一键开单", close_long: "平全部多", close_short: "平全部空",
-    close_profit: "平所有盈利", close_loss: "平所有亏损", nuke: "核弹级全平",
+    close_profit: "平所有盈利", close_loss: "平所有亏损", nuke: "核弹级全平", lock: "一键锁仓",
   };
   const MODE = { fixed: "固定手数", multiplier: "按账户倍数", equity: "按净值比例" };
 
@@ -373,18 +373,40 @@
     set("qRes", `<div class="q-rh"><b>${h(r.title)}</b>：<span class="q-up">成功 ${r.ok}</span> / <span class="${r.fail ? "q-dn" : ""}">失败 ${r.fail}</span><span class="q-note"> · ${(r.ms / 1000).toFixed(1)} 秒 · ${hms(r.at)}</span><button type="button" class="q-x" onclick="window.__quick.res=null;window.__quick.render()">×</button></div>
       <div class="q-rl">${bad.map((x) => `<div class="q-dn">✗ ${h(x.alias)}：${h(x.message)}</div>`).join("")}${good.map((x) => `<div class="q-ok">✓ ${h(x.alias)}：${h(x.message)}</div>`).join("")}</div>`);
   }
+  function floatParts(a) {
+    let win = 0, loss = 0;
+    (a.positions || []).forEach((p) => {
+      const pl = Number(p.profit) || 0;
+      if (pl > 0) win += pl; else if (pl < 0) loss += pl;
+    });
+    return { win, loss };
+  }
   function renderSide() {
     const s = Q.sum, sel = selAccs();
     if (!sel.length) return set("qSide", `<h3>已选账户</h3><p class="q-note">还没有选择账户。</p>`);
     const byIdMap = Object.fromEntries(sel.map((a) => [a.id, a]));
     const rows = (s && s.accounts) || sel.map((a) => ({ id: a.id, alias: a.alias, login: a.login, link: a.link, floating: a.floating, longLots: 0, shortLots: 0, symProfit: 0, symbol: "", error: "" }));
     const tot = rows.reduce((t, r) => t + (r.link === "online" ? Number(r.floating) || 0 : 0), 0);
-    set("qSide", `<h3>已选账户（${rows.length}）<span class="q-note"> · 合计浮动 <b class="${cls(tot)}">${sg(tot)}</b> · 本品种 ${h(symbol())}</span></h3>
-      <div class="q-tw"><table><thead><tr><th>账户</th><th>账号</th><th>状态</th><th>浮动</th><th>多</th><th>空</th><th>本品种盈亏</th></tr></thead><tbody>
+    let totWin = 0, totLoss = 0;
+    rows.forEach((r) => {
+      if (r.link !== "online") return;
+      const src = byIdMap[r.id];
+      const fw = src ? floatParts(src).win : Number(r.floatWin) || 0;
+      const fl = src ? floatParts(src).loss : Number(r.floatLoss) || 0;
+      totWin += fw; totLoss += fl;
+    });
+    set("qSide", `<h3>已选账户（${rows.length}）<span class="q-note"> · 合计浮动 <b class="${cls(tot)}">${sg(tot)}</b> · 浮赢 <b class="q-up">${sg(totWin)}</b> · 浮亏 <b class="q-dn">${sg(totLoss)}</b> · 本品种 ${h(symbol())}</span></h3>
+      <div class="q-tw"><table><thead><tr><th>账户</th><th>账号</th><th>状态</th><th>浮动</th><th>浮赢</th><th>浮亏</th><th>多</th><th>空</th><th>本品种盈亏</th></tr></thead><tbody>
       ${rows.map((r) => {
+        const src = byIdMap[r.id];
+        const parts = src && r.link === "online" ? floatParts(src) : { win: Number(r.floatWin) || 0, loss: Number(r.floatLoss) || 0 };
+        const showFl = r.link === "online";
         return `<tr><td>${h(r.alias)}${r.error ? `<div class="q-dn q-sm">${h(r.error)}</div>` : r.note ? `<div class="q-note q-sm">${h(r.note)}</div>` : ""}</td><td class="q-num">${h(r.login)}</td>
         <td class="${r.link === "online" ? "q-up" : r.link === "error" ? "q-dn" : "q-note"}">${r.link === "online" ? "在线" : r.link === "error" ? "出错" : r.link === "connecting" ? "连接中" : "离线"}</td>
-        <td class="q-num ${cls(r.floating)}">${r.link === "online" ? sg(r.floating) : "—"}</td><td class="q-num">${r.longLots ? nf(r.longLots) : "—"}</td><td class="q-num">${r.shortLots ? nf(r.shortLots) : "—"}</td>
+        <td class="q-num ${cls(r.floating)}">${showFl ? sg(r.floating) : "—"}</td>
+        <td class="q-num q-up">${showFl ? sg(parts.win) : "—"}</td>
+        <td class="q-num q-dn">${showFl ? sg(parts.loss) : "—"}</td>
+        <td class="q-num">${r.longLots ? nf(r.longLots) : "—"}</td><td class="q-num">${r.shortLots ? nf(r.shortLots) : "—"}</td>
         <td class="q-num ${cls(r.symProfit)}">${r.longLots || r.shortLots ? sg(r.symProfit) : "—"}</td></tr>`;
       }).join("")}
       </tbody></table></div>`);
@@ -436,6 +458,34 @@
         desc: `<div><b>${on.length}</b> 个在线账户 · ${action === "pair" ? "同时开 1 多 + 1 空" : action === "buy" ? "买入（多）" : "卖出（空）"} · ${per} · 合计约 <b>${total}</b> 手</div>${warn ? `<div class="small down-t">${warn}</div>` : ""}${blocked ? `<div class="small down-t">合计超过批量上限 ${pv.max_total_lots} 手，会被整批拦截</div>` : ""}${offTxt}`,
         label: `确认${ACT[action]}`, tone: action === "buy" ? "up" : action === "sell" ? "danger" : "primary",
         run: () => { send(action, body); },
+      });
+    }
+    if (action === "lock") {
+      if (!/^[A-Za-z0-9._#&+\-]{1,32}$/.test(sym)) return toast("请填写品种（一键锁仓只锁当前品种）", true);
+      const rows = Q.sum && Q.sum.accounts ? Q.sum.accounts : [];
+      const bySum = Object.fromEntries(rows.map((r) => [r.id, r]));
+      const inSym = (a, p) => {
+        const r = bySum[a.id];
+        return p.symbol === sym || (r && r.symbol && p.symbol === r.symbol) || (p.symbol.startsWith(sym) && p.symbol.length - sym.length <= 2);
+      };
+      const plan = [];
+      on.forEach((a) => {
+        const pos = (a.positions || []).filter((p) => inSym(a, p));
+        const longLots = pos.filter((p) => p.side === "buy").reduce((t, p) => t + (Number(p.volume) || 0), 0);
+        const shortLots = pos.filter((p) => p.side === "sell").reduce((t, p) => t + (Number(p.volume) || 0), 0);
+        const diff = Math.round((longLots - shortLots) * 100) / 100;
+        let tip;
+        if (Math.abs(diff) < 0.00005) tip = "已锁仓/无净持仓，跳过补单，仍关闭算法";
+        else if (diff < 0) tip = `空 ${nf(shortLots)} / 多 ${nf(longLots)} → <b class="q-up">补多 ${nf(-diff)}</b>`;
+        else tip = `多 ${nf(longLots)} / 空 ${nf(shortLots)} → <b class="q-dn">补空 ${nf(diff)}</b>`;
+        plan.push(`<div>${h(a.alias)}：${tip}</div>`);
+      });
+      if (!on.length) return toast("没有在线账户", true);
+      if (noConfirm) return send("lock", {});
+      return confirmBox({
+        title: `一键锁仓 ${sym}`,
+        desc: `<div>按当前品种补齐多空手数差。若算法交易是关的，会<b>短暂打开</b>（并暂时卸下图表 EA，防补单），补完后<b>关闭算法交易并记住关闭</b>。</div>${plan.join("")}${offTxt}`,
+        label: "确认锁仓", tone: "primary", run: () => { send("lock", {}); },
       });
     }
     if (action === "nuke") {

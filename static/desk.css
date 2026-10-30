@@ -269,6 +269,7 @@ body.pd-av-open{overflow:hidden}
 .pd-avbtn:disabled{opacity:.45;cursor:not-allowed}
 .pd-avbtn.buy{background:#1f7a4d;border-color:#1f7a4d;color:#fff}
 .pd-avbtn.sell{background:#c8203f;border-color:#c8203f;color:#fff}
+.pd-avbtn.lock{background:#0d3a5c;border-color:#2a6a9c;color:#7ec8ff;font-weight:700}
 .pd-avbtn.danger{background:#fff;border-color:#e8b4bc;color:#c8203f;min-height:34px;padding:0 12px;font-size:13px}
 .pd-avbtn.danger:hover{background:#fff5f6}
 .pd-avhint{font:11px var(--pd-mono);color:var(--pd-mut);margin:8px 0 0}
@@ -284,7 +285,7 @@ body.pd-av-open{overflow:hidden}
 @media (max-width:760px){
   .pd-avmetrics{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pd-avform{flex-direction:column;align-items:stretch}
-  .pd-avform input,.pd-avbtn.buy,.pd-avbtn.sell{width:100%;min-height:46px;font-size:15px}
+  .pd-avform input,.pd-avbtn.buy,.pd-avbtn.sell,.pd-avbtn.lock{width:100%;min-height:46px;font-size:15px}
   .pd-avform label{width:100%}
   .pd-avform label input{min-width:0;width:100%}
   .pd-avbatch{width:100%}

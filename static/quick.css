@@ -48,6 +48,7 @@ select.qp-in{font-family:var(--pd-sans);font-size:13px}
 .qb-cp{background:#4682b4;border-color:#6aa0cc}
 .qb-cx{background:#d2691e;border-color:#e38a45}
 .qb-nuke{background:#dc143c;color:#ffff3d;border-color:#f04a68;font-weight:700}
+.qb-lock{background:#0d3a5c;color:#7ec8ff;border-color:#2a6a9c;font-weight:700}
 .qp-auto{display:flex;gap:6px;align-items:stretch}
 .qp-auto .qp-in{flex:1;min-width:0;font-size:17px;min-height:50px}
 .qb-arm{flex-shrink:0;min-width:64px;padding:0 8px;background:#111;color:#00e5ff;border:1px solid #00bcd4;border-radius:2px;cursor:pointer;font:600 14px var(--pd-sans)}
