@@ -591,6 +591,8 @@ window.FleetMobileSheet = (function () {
     const hangS = document.getElementById("pdAvHangShort");
     if (hangL) hangL.onclick = () => placeAvPending("long");
     if (hangS) hangS.onclick = () => placeAvPending("short");
+    const lockBtn = document.getElementById("pdAvLock");
+    if (lockBtn) lockBtn.onclick = () => lockAvSymbol();
   }
   function patchAvLive(sh, a, pos, online, bal, eq, fl, today, ccy) {
     const setTxt = (sel, t, clsName) => {
@@ -645,7 +647,7 @@ window.FleetMobileSheet = (function () {
       }
     });
     const dis = !online || !!D.detailBusy;
-    ["pdAvSym", "pdAvLots", "pdAvBuy", "pdAvSell", "pdAvPendPrice", "pdAvPendSL", "pdAvPendTP", "pdAvPendUnit", "pdAvHangLong", "pdAvHangShort"].forEach((id) => {
+    ["pdAvSym", "pdAvLots", "pdAvBuy", "pdAvSell", "pdAvLock", "pdAvPendPrice", "pdAvPendSL", "pdAvPendTP", "pdAvPendUnit", "pdAvHangLong", "pdAvHangShort"].forEach((id) => {
       const el = document.getElementById(id); if (el) el.disabled = dis;
     });
     sh.querySelectorAll("[data-avclose]").forEach((b) => { b.disabled = !!D.detailBusy; });
@@ -758,8 +760,9 @@ window.FleetMobileSheet = (function () {
           <label>手数<input type="number" id="pdAvLots" min="0.01" step="0.01" value="${esc(form.lots || "0.01")}" ${!online || D.detailBusy ? "disabled" : ""}></label>
           <button type="button" class="pd-avbtn buy" id="pdAvBuy" ${!online || D.detailBusy ? "disabled" : ""}>开多</button>
           <button type="button" class="pd-avbtn sell" id="pdAvSell" ${!online || D.detailBusy ? "disabled" : ""}>开空</button>
+          <button type="button" class="pd-avbtn lock" id="pdAvLock" title="按上方品种补齐多空手数差并关闭算法交易" ${!online || D.detailBusy ? "disabled" : ""}>一键锁仓</button>
         </div>
-        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。</p>
+        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。「一键锁仓」只锁本账户当前品种；算法关着也会短暂打开（卸 EA），补完后关闭并记住。</p>
       </div>
       <div class="pd-avsec pd-avpend">
         <div class="pd-avsec-t">预订单（仅本账户）</div>
@@ -782,6 +785,53 @@ window.FleetMobileSheet = (function () {
       if (el) { try { el.focus(); el.setSelectionRange(selStart, selEnd); } catch (e) { /* */ } }
     }
   }
+  async function lockAvSymbol() {
+    const id = D.detailId;
+    const a = accById(id);
+    if (!a) return;
+    const FT = window.FleetTrade;
+    if (a.link !== "online") { if (FT && FT.toast) FT.toast("账户不在线", true); return; }
+    if (!FT || !FT.api || !FT.confirmBox) { if (FT && FT.toast) FT.toast("交易接口未就绪，请刷新页面", true); return; }
+    const form = readAvForm();
+    const sym = (form.sym || "").trim();
+    if (!/^[A-Za-z0-9._#&+\-]{1,32}$/.test(sym)) { FT.toast("请填写品种（一键锁仓只锁当前品种）", true); return; }
+    const inSym = (p) => p.symbol === sym || (p.symbol.startsWith(sym) && p.symbol.length - sym.length <= 2);
+    const pos = (a.positions || []).filter(inSym);
+    const longLots = pos.filter((p) => p.side === "buy").reduce((t, p) => t + (Number(p.volume) || 0), 0);
+    const shortLots = pos.filter((p) => p.side === "sell").reduce((t, p) => t + (Number(p.volume) || 0), 0);
+    const diff = Math.round((longLots - shortLots) * 100) / 100;
+    let tip;
+    if (Math.abs(diff) < 0.00005) tip = "已锁仓/无净持仓，跳过补单，仍关闭算法";
+    else if (diff < 0) tip = `空 ${nf(shortLots)} / 多 ${nf(longLots)} → <b class="pd-g">补多 ${nf(-diff)}</b>`;
+    else tip = `多 ${nf(longLots)} / 空 ${nf(shortLots)} → <b class="pd-r">补空 ${nf(diff)}</b>`;
+    const off = !(a.terminal && a.terminal.trade_allowed);
+    const offTxt = off
+      ? `<div class="small muted" style="margin-top:6px">该账户算法交易当前是关的：会短暂打开并暂时卸下图表 EA，补完后关闭并记住关闭。</div>`
+      : `<div class="small muted" style="margin-top:6px">补完后会关闭该账户算法交易并记住关闭（避免 EA 立刻再开仓）。</div>`;
+    FT.confirmBox({
+      title: `一键锁仓 ${sym}`,
+      desc: `<div>${esc(a.alias || a.login)} · 仅本账户 · 按品种补齐多空手数差。若算法交易是关的，会<b>短暂打开</b>（并暂时卸下图表 EA，防补单），补完后<b>关闭算法交易并记住关闭</b>。</div><div style="margin-top:8px">${tip}</div>${offTxt}`,
+      label: "确认锁仓",
+      tone: "primary",
+      run: async () => {
+        D.detailBusy = true; renderAvDetail(false);
+        try {
+          const r = await FT.api("/api/quick/action", { action: "lock", ids: [id], symbol: sym });
+          const bad = (r.results || []).filter((x) => !x.ok);
+          if (bad.length) FT.toast(`${r.title || "一键锁仓"}：失败。${bad[0].alias}：${bad[0].message}`, true);
+          else FT.toast(`${r.title || "一键锁仓"}：成功 ${r.ok || 1}`);
+          if (typeof poll === "function") poll();
+        } catch (e) {
+          FT.toast(e.message || String(e), true);
+          return true;
+        } finally {
+          D.detailBusy = false;
+          if (D.detailId) renderAvDetail(false);
+        }
+      },
+    });
+  }
+
   async function placeAvOrder(kind) {
     const id = D.detailId;
     const a = accById(id);

@@ -302,7 +302,7 @@ class Worker:
         不改动账户的 algo_off 记忆（用户手动关闭偏好保留）；本来就是开则不动。
 
         guard_experts=True（平仓 / 核弹 / 改单 / 撤挂单）：临时开算法前先卸下图表 EA，
-        做完并关回算法后再挂回，避免短暂开算法时 EA 补新单。开仓类不要开此开关。
+        做完并关回算法后再挂回，避免短暂开算法时 EA 补新单。市价开仓/开单不要开此开关；一键锁仓要开（补单窗口同样防 EA）。
         """
         was = self._algo_now()
         turned = False
@@ -1454,9 +1454,10 @@ class Worker:
         try:
             # 下单/平仓等需要 terminal.trade_allowed；算法交易关着时临时打开再恢复（不改 algo_off）
             # 平仓/核弹/改单/撤挂：guard_experts，避免短暂开算法时图表 EA 补新单
-            if name in ("close", "modify", "cancel_orders", "nuke"):
+            if name in ("close", "modify", "cancel_orders", "nuke", "lock"):
+                # 锁仓也护 EA：算法关时短暂打开补单，卸 EA 防补花，做完关回并记 algo_off
                 ok, msg, detail = self.with_algo_for_trade(fn, params, guard_experts=True)
-            elif name in ("order", "order_pair", "lock"):
+            elif name in ("order", "order_pair"):
                 ok, msg, detail = self.with_algo_for_trade(fn, params, guard_experts=False)
             else:
                 ok, msg, detail = fn(params)
