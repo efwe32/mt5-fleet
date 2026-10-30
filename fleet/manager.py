@@ -38,7 +38,7 @@ QUICK_ACTIONS = {
     "buy": ("一键开多", "order"), "sell": ("一键开空", "order"), "pair": ("一键开单", "order_pair"),
     "close_long": ("平全部多", "close"), "close_short": ("平全部空", "close"),
     "close_profit": ("平所有盈利", "close"), "close_loss": ("平所有亏损", "close"),
-    "nuke": ("核弹级全平", "nuke"),
+    "nuke": ("核弹级全平", "nuke"), "lock": ("一键锁仓", "lock"),
 }
 QUICK_CLOSE_MODE = {"close_long": "long", "close_short": "short", "close_profit": "profit", "close_loss": "loss"}
 FRESH_SEC = 15         # 自动全平只统计这么多秒内刷新过的账户
@@ -1029,10 +1029,13 @@ class Fleet:
                 acc = (snap or {}).get("account") or {}
                 q = ((snap or {}).get("quotes") or {}).get(symbol)
                 names = self._sym_names(a, symbol, q)
-                pos = [p for p in (snap or {}).get("positions", []) if p["symbol"] in names]
+                all_pos = list((snap or {}).get("positions", []) or [])
+                pos = [p for p in all_pos if p["symbol"] in names]
                 ll = round(sum(p["volume"] for p in pos if p["side"] == "buy"), 2)
                 sl = round(sum(p["volume"] for p in pos if p["side"] == "sell"), 2)
                 sp = round(sum(p["profit"] for p in pos), 2)
+                fw = round(sum(p["profit"] for p in all_pos if (p.get("profit") or 0) > 0), 2)
+                floss = round(sum(p["profit"] for p in all_pos if (p.get("profit") or 0) < 0), 2)
                 if snap:
                     n_on += 1
                     bal += float(acc.get("balance", 0) or 0)
@@ -1055,6 +1058,7 @@ class Fleet:
                              "enabled": a["enabled"], "floating": acc.get("profit", last.get("floating", 0)),
                              "equity": acc.get("equity", last.get("equity", 0)), "symbol": (q or {}).get("symbol") or "",
                              "longLots": ll, "shortLots": sl, "symProfit": sp, "positions": len(pos),
+                             "floatWin": fw if snap else 0, "floatLoss": floss if snap else 0,
                              "error": (q or {}).get("error", "") if snap else "", "note": (q or {}).get("note", "") if snap else ""})
         digits = int((quote or {}).get("digits", 5))
 
@@ -1107,11 +1111,18 @@ class Fleet:
         elif cmd == "close":
             params = {"mode": QUICK_CLOSE_MODE[action], "only_symbol": sym if p.get("only_symbol") else "", "deviation": dev}
             out = self.run_batch(f"快捷·{title}", "close", ids, params, 90, banner=False)
+        elif cmd == "lock":
+            if not sym:
+                raise ValueError("一键锁仓需要填写品种")
+            params = {"symbol": sym, "auto_symbol": True, "deviation": dev,
+                      "magic": int(s.get("default_magic") or 880000), "comment": "fleet lock",
+                      "max_lots": float(s.get("max_lots") or 0)}
+            out = self.run_batch(f"快捷·{title}", "lock", ids, params, 90, banner=False)
         else:
             out = self.run_batch(f"快捷·{title}", "nuke", ids, {"deviation": dev}, 120, banner=False)
         out["title"] = title
         out["ms"] = int((time.time() - t0) * 1000)
-        self._quick_remember(action, title, sym if (cmd != "nuke" and (cmd != "close" or p.get("only_symbol"))) else "全部品种", out)
+        self._quick_remember(action, title, sym if (cmd == "lock" or (cmd != "nuke" and (cmd != "close" or p.get("only_symbol")))) else "全部品种", out)
         return out
 
     def _quick_remember(self, action, title, sym, out):

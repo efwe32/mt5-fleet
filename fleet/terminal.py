@@ -367,6 +367,64 @@ def _read_text(path: Path) -> tuple[str, str]:
         return raw.decode(enc), enc
 
 
+
+def freeze_chart_experts(terminal_path: str) -> dict | None:
+    """终端须已关闭。备份并卸下当前 Profile 图表上的全部 EA。无 EA 时返回 None。
+    返回快照供 restore_chart_experts 用；原文件另存 fleet_backup/experts-freeze-*。"""
+    d = profile_dir(terminal_path)
+    if not d.exists():
+        return None
+    items: list[tuple[str, bytes]] = []
+    for f in sorted(d.glob("*.chr")):
+        try:
+            text, enc = _read_text(f)
+        except Exception:
+            continue
+        if not _EXPERT_RE.search(text):
+            continue
+        items.append((f.name, f.read_bytes()))
+        new = _EXPERT_RE.sub("", text)
+        if enc.startswith("utf-16"):
+            f.write_bytes(b"\xff\xfe" + new.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-16-le"))
+        else:
+            try:
+                f.write_text(new, encoding=enc)
+            except Exception:
+                f.write_bytes(b"\xff\xfe" + new.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-16-le"))
+    if not items:
+        return None
+    bdir = terminal_dir(terminal_path) / "fleet_backup" / f"experts-freeze-{time.strftime('%Y%m%d-%H%M%S')}"
+    bdir.mkdir(parents=True, exist_ok=True)
+    for name, raw in items:
+        try:
+            (bdir / name).write_bytes(raw)
+        except OSError:
+            pass
+    return {"dir": str(bdir), "files": [n for n, _ in items]}
+
+
+def restore_chart_experts(terminal_path: str, snap: dict | None) -> int:
+    """终端须已关闭。按 freeze_chart_experts 快照把图表 EA 写回。返回恢复文件数。"""
+    if not snap or not snap.get("dir"):
+        return 0
+    bdir = Path(snap["dir"])
+    if not bdir.is_dir():
+        return 0
+    d = profile_dir(terminal_path)
+    d.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for name in snap.get("files") or []:
+        src = bdir / name
+        if not src.is_file():
+            continue
+        try:
+            shutil.copy2(src, d / name)
+            n += 1
+        except OSError:
+            pass
+    return n
+
+
 def remove_expert_from_charts(terminal_path: str, ex5_name: str) -> int:
     """在（我们自己的）终端关闭状态下，从它的图表文件里删除指定 EA。返回改动的图表数。"""
     stem = Path(ex5_name).stem.lower()

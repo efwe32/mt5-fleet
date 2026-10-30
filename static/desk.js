@@ -610,6 +610,20 @@ window.FleetMobileSheet = (function () {
       if (flEl.textContent !== t) flEl.textContent = t;
       flEl.className = "val num " + (fl > 0 ? "pd-g" : fl < 0 ? "pd-r" : "");
     }
+    let fWin = 0, fLoss = 0;
+    (pos || []).forEach((p) => { const pl = Number(p.profit) || 0; if (pl > 0) fWin += pl; else if (pl < 0) fLoss += pl; });
+    const fwEl = sh.querySelector("[data-avm=fwin]");
+    if (fwEl) {
+      const t = online ? sgn(fWin) : "—";
+      if (fwEl.textContent !== t) fwEl.textContent = t;
+      fwEl.className = "val num pd-g";
+    }
+    const flossEl = sh.querySelector("[data-avm=floss]");
+    if (flossEl) {
+      const t = online ? sgn(fLoss) : "—";
+      if (flossEl.textContent !== t) flossEl.textContent = t;
+      flossEl.className = "val num pd-r";
+    }
     const tdEl = sh.querySelector("[data-avm=today]");
     if (tdEl) {
       const t = sgn(today);
@@ -664,6 +678,8 @@ window.FleetMobileSheet = (function () {
     const fl = Number(a.floating) || 0;
     const bal = Number(a.balance) || 0;
     const eq = Number(a.equity) || 0;
+    let fWin = 0, fLoss = 0;
+    pos.forEach((p) => { const pl = Number(p.profit) || 0; if (pl > 0) fWin += pl; else if (pl < 0) fLoss += pl; });
     const col = colorOf(a.id);
     const stCls = online ? "on" : a.link === "error" ? "err" : "";
     // 结构不变时只改数字，避免轮询重写把横向滚动打回、打断平仓点击
@@ -719,6 +735,8 @@ window.FleetMobileSheet = (function () {
         <div class="pd-avm"><div class="lab">余额</div><div class="val num" data-avm="bal">${nf(bal)} <small>${esc(ccy)}</small></div></div>
         <div class="pd-avm"><div class="lab">净值</div><div class="val num" data-avm="eq">${nf(eq)}</div></div>
         <div class="pd-avm"><div class="lab">浮动盈亏</div><div class="val num ${fl > 0 ? "pd-g" : fl < 0 ? "pd-r" : ""}" data-avm="fl">${online ? sgn(fl) : "—"}</div></div>
+        <div class="pd-avm"><div class="lab">浮赢</div><div class="val num pd-g" data-avm="fwin">${online ? sgn(fWin) : "—"}</div></div>
+        <div class="pd-avm"><div class="lab">浮亏</div><div class="val num pd-r" data-avm="floss">${online ? sgn(fLoss) : "—"}</div></div>
         <div class="pd-avm"><div class="lab">今日平仓</div><div class="val num ${today > 0 ? "pd-g" : today < 0 ? "pd-r" : ""}" data-avm="today">${sgn(today)}</div></div>
         <div class="pd-avm"><div class="lab">持仓笔数</div><div class="val num" data-avm="npos">${online ? pos.length : "—"}</div></div>
       </div>

@@ -297,12 +297,19 @@ class Worker:
         return False, f"已发送{want}命令，但终端状态没有变化（现在仍是{'开' if now else '关'}）。请在该终端窗口里手动点「算法交易」按钮", \
             {"trade_allowed": bool(now)}
 
-    def with_algo_for_trade(self, fn, params: dict):
+    def with_algo_for_trade(self, fn, params: dict, guard_experts: bool = False):
         """快捷 / 批量交易：若算法交易当前是关，临时打开 → 下单/平仓 → finally 再关回去。
-        不改动账户的 algo_off 记忆（用户手动关闭偏好保留）；本来就是开则不动。"""
+        不改动账户的 algo_off 记忆（用户手动关闭偏好保留）；本来就是开则不动。
+
+        guard_experts=True（平仓 / 核弹 / 改单 / 撤挂单）：临时开算法前先卸下图表 EA，
+        做完并关回算法后再挂回，避免短暂开算法时 EA 补新单。开仓类不要开此开关。
+        """
         was = self._algo_now()
         turned = False
+        frozen = None
         try:
+            if guard_experts and was is False:
+                frozen = self._experts_freeze_for_trade()
             if was is False:
                 ok, msg, _ = self.set_algo(True)
                 if not ok:
@@ -315,6 +322,78 @@ class Worker:
                 if not ok2:
                     self.emit(type="log", action="算法交易", ok=False,
                               message=f"交易后把算法交易关回去失败：{msg2}（请在该终端工具栏手动关掉）")
+            if frozen is not None:
+                self._experts_restore_after_trade(frozen)
+
+    def _experts_freeze_for_trade(self):
+        """算法关 + 即将临时打开：卸下图表 EA。mock 只记标志；真机需重启终端使卸载生效。
+        返回快照（供恢复）或 None（无需/失败则继续交易，但已尽量尝试）。"""
+        self._last_experts_guard = True
+        if self.mock:
+            return {"mock": True}
+        from . import terminal as T
+        path = self.acc.get("terminal_path") or ""
+        if not path:
+            return None
+        try:
+            charts = T.list_charts(path)
+        except Exception:
+            charts = []
+        if not any(c.get("experts") for c in charts):
+            self._last_experts_guard = False
+            return None
+        self.progress("guard", "run", "平仓前暂时卸下图表 EA，避免开算法时补单…")
+        ok, msg = self._restart()
+        if not ok:
+            self.progress("guard", "warn", f"无法重启终端卸 EA：{msg}（仍继续平仓，请留意是否补单）")
+            self.emit(type="log", action="EA防护", ok=False, message=f"卸下图表 EA 失败：{msg}")
+            return None
+        try:
+            snap = T.freeze_chart_experts(path)
+        except Exception as e:
+            snap = None
+            self.emit(type="log", action="EA防护", ok=False, message=f"改写图表失败：{e}")
+        ok2, msg2 = self._relaunch(None)
+        if not ok2:
+            self.progress("guard", "fail", f"卸 EA 后重连失败：{msg2}")
+            if snap:
+                try:
+                    T.restore_chart_experts(path, snap)
+                except Exception:
+                    pass
+            return None
+        if snap:
+            self.progress("guard", "ok", f"已暂时卸下 {len(snap.get('files') or [])} 个图表上的 EA")
+        else:
+            self.progress("guard", "ok", "图表无 EA，跳过卸载")
+            self._last_experts_guard = False
+        return snap
+
+    def _experts_restore_after_trade(self, snap):
+        """平仓等结束后把图表 EA 挂回，并保持算法交易关闭（algo_off 记忆不变）。"""
+        if not snap or snap.get("mock"):
+            return
+        from . import terminal as T
+        path = self.acc.get("terminal_path") or ""
+        if not path:
+            return
+        self.progress("guard", "run", "正在挂回图表 EA…")
+        ok, msg = self._restart()
+        if not ok:
+            self.progress("guard", "warn", f"挂回 EA 前关终端失败：{msg}（图表文件可能仍无 EA，可重新分发）")
+            self.emit(type="log", action="EA防护", ok=False, message=f"挂回 EA 失败（关终端）：{msg}")
+            return
+        try:
+            n = T.restore_chart_experts(path, snap)
+        except Exception as e:
+            n = 0
+            self.emit(type="log", action="EA防护", ok=False, message=f"恢复图表失败：{e}")
+        ok2, msg2 = self._relaunch(None)
+        if not ok2:
+            self.progress("guard", "warn", f"挂回后重连失败：{msg2}")
+            self.emit(type="log", action="EA防护", ok=False, message=f"挂回 EA 后重连失败：{msg2}")
+            return
+        self.progress("guard", "ok", f"已挂回 {n} 个图表 EA（算法交易保持关）")
 
     def apply_algo_pref(self, snap: dict) -> tuple[dict, str]:
         """登录 / 重连后处理算法交易。
@@ -889,6 +968,63 @@ class Worker:
         ok2, m2, d2 = self.cmd_order({**p, "kind": "sell"})
         return ok1 and ok2, f"多：{m1}；空：{m2}", {"buy": d1, "sell": d2, "lots": d1.get("lots", 0)}
 
+    def cmd_lock(self, p: dict):
+        """一键锁仓：按当前品种补齐多空手数差（空多→买，多多→卖），然后关闭算法交易并记 algo_off。"""
+        symbol = p.get("symbol") or ""
+        sym_note = ""
+        if p.get("auto_symbol"):
+            ok_s, actual, sym_note = self.quick_symbol(symbol)
+            if not ok_s:
+                return False, sym_note, {}
+            symbol = actual
+        else:
+            symbol = self.resolve_symbol(symbol)
+        info, _tick = self.symbol_ready(symbol)
+        positions = list(self.mt5.positions_get(symbol=symbol) or [])
+        buy_t = self.c("ORDER_TYPE_BUY")
+        sell_t = self.c("ORDER_TYPE_SELL")
+        long_lots = round(sum(float(x.volume) for x in positions if int(x.type) == buy_t), 8)
+        short_lots = round(sum(float(x.volume) for x in positions if int(x.type) == sell_t), 8)
+        step = float(getattr(info, "volume_step", 0) or 0.01)
+        diff = abs(long_lots - short_lots)
+        detail = {"longLots": long_lots, "shortLots": short_lots, "symbol": symbol}
+
+        def _algo_off():
+            ok_a, msg_a, _ = self.set_algo(False)
+            if ok_a:
+                self.acc["algo_off"] = True
+                self.emit(type="algo_off", algo_off=True)
+            return ok_a, msg_a
+
+        if diff < step / 2:
+            ok_a, msg_a = _algo_off()
+            tail = "；已关闭算法交易" if ok_a else f"；关闭算法交易失败：{msg_a}"
+            note = f"（{sym_note}）" if sym_note else ""
+            return True, f"{symbol} 已锁仓或无净持仓（多 {long_lots:g} / 空 {short_lots:g}）{note}{tail}", {**detail, "skipped": True}
+
+        if short_lots > long_lots:
+            kind, raw = "buy", short_lots - long_lots
+            side_cn = "补多"
+        else:
+            kind, raw = "sell", long_lots - short_lots
+            side_cn = "补空"
+        lots = self.norm_volume(raw, info)
+        if lots < float(info.volume_min or 0):
+            ok_a, msg_a = _algo_off()
+            return False, f"锁仓需 {raw:g} 手，小于最小手数 {info.volume_min}", detail
+        ok, msg, d = self.cmd_order({
+            "symbol": symbol, "kind": kind, "lots": lots, "scale_mode": "fixed",
+            "magic": int(p.get("magic") or 880000), "comment": (p.get("comment") or "fleet lock")[:31],
+            "deviation": int(p.get("deviation") or 20), "max_lots": float(p.get("max_lots") or 0),
+            "auto_symbol": False, "sl": 0, "tp": 0,
+        })
+        detail.update(d or {}, kind=kind, lots=lots)
+        ok_a, msg_a = _algo_off()
+        algo_tail = "；已关闭算法交易" if ok_a else f"；关闭算法交易失败：{msg_a}"
+        note = f"（{sym_note}）" if sym_note else ""
+        return ok, f"一键锁仓 {side_cn} {lots:g} 手：{msg}{note}{algo_tail}", detail
+
+
     def _match(self, pos, f: dict) -> bool:
         mode = f.get("mode", "all")
         if mode == "long":
@@ -1303,7 +1439,8 @@ class Worker:
         handlers = {"order": self.cmd_order, "close": self.cmd_close, "modify": self.cmd_modify,
                     "cancel_orders": self.cmd_cancel_orders, "history": self.cmd_history,
                     "deploy": self.cmd_deploy, "stop_ea": self.cmd_stop_ea,
-                    "order_pair": self.cmd_order_pair, "nuke": self.cmd_nuke, "algo": self.cmd_algo}
+                    "order_pair": self.cmd_order_pair, "nuke": self.cmd_nuke, "algo": self.cmd_algo,
+                    "lock": self.cmd_lock}
         fn = handlers.get(name)
         if fn is None:
             self.emit(type="result", req=req, ok=False, message=f"未知命令 {name}")
@@ -1316,14 +1453,17 @@ class Worker:
             return
         try:
             # 下单/平仓等需要 terminal.trade_allowed；算法交易关着时临时打开再恢复（不改 algo_off）
-            if name in ("order", "close", "modify", "cancel_orders", "order_pair", "nuke"):
-                ok, msg, detail = self.with_algo_for_trade(fn, params)
+            # 平仓/核弹/改单/撤挂：guard_experts，避免短暂开算法时图表 EA 补新单
+            if name in ("close", "modify", "cancel_orders", "nuke"):
+                ok, msg, detail = self.with_algo_for_trade(fn, params, guard_experts=True)
+            elif name in ("order", "order_pair", "lock"):
+                ok, msg, detail = self.with_algo_for_trade(fn, params, guard_experts=False)
             else:
                 ok, msg, detail = fn(params)
         except Exception as e:
             ok, msg, detail = False, f"执行出错：{e}", {"trace": traceback.format_exc()[-800:]}
         self.emit(type="result", req=req, ok=ok, message=msg, detail=detail)
-        if name in ("order", "close", "modify", "cancel_orders", "order_pair", "nuke", "algo"):
+        if name in ("order", "close", "modify", "cancel_orders", "order_pair", "nuke", "algo", "lock"):
             self.poll()
 
     def run(self, init_req=None):
