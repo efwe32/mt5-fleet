@@ -49,18 +49,11 @@ check("manager _quick_run lock", 'cmd == "lock"' in manager and "fleet lock" in 
 check("worker cmd_lock", "def cmd_lock" in worker and "fleet lock" in worker)
 check("worker handlers lock", '"lock": self.cmd_lock' in worker)
 
-# 平仓防 EA：guard_experts
-check("with_algo_for_trade 有 guard_experts", "def with_algo_for_trade" in worker and "guard_experts" in worker)
-check("close/nuke/lock 走 guard_experts=True",
-      'name in ("close", "modify", "cancel_orders", "nuke", "lock")' in worker
-      and "guard_experts=True" in worker)
-check("order/pair 不护 EA",
-      'name in ("order", "order_pair")' in worker
-      and "guard_experts=False" in worker)
+# 平仓防 EA：v1.5.13 曾用重启卸 EA；v1.5.14 起废止，仅保留短暂开算法
+check("with_algo_for_trade 仍在", "def with_algo_for_trade" in worker)
+check("交易路径不因 guard 重启", "_experts_freeze_for_trade" not in worker and "guard_experts=True" not in worker)
 check("锁仓确认提及短暂开算法", "短暂打开" in qj and 'action === "lock"' in qj)
-check("terminal freeze/restore", "def freeze_chart_experts" in terminal and "def restore_chart_experts" in terminal)
-check("worker 调用 freeze/restore", "_experts_freeze_for_trade" in worker and "_experts_restore_after_trade" in worker)
-check("更新说明写明平仓防补单", "卸下" in notes and ("图表" in notes or "EA" in notes))
+check("terminal 仍保留 freeze/restore 工具函数", "def freeze_chart_experts" in terminal and "def restore_chart_experts" in terminal)
 
 # busy 防双击仍在
 check("Q.busy 防双击", "if (Q.busy)" in qj)
@@ -70,7 +63,7 @@ desk = (ROOT / "static" / "desk.js").read_text(encoding="utf-8")
 css = (ROOT / "static" / "desk.css").read_text(encoding="utf-8")
 check("头像详情一键锁仓按钮", 'id="pdAvLock"' in desk and "一键锁仓" in desk)
 check("lockAvSymbol 实现", "async function lockAvSymbol" in desk and '/api/quick/action' in desk and 'action: "lock"' in desk)
-check("头像锁仓确认提及短暂开算法", "短暂打开" in desk and "lockAvSymbol" in desk)
+check("头像锁仓确认提及短暂开算法", "短暂打开" in desk and "lockAvSymbol" in desk and "不重启" in desk)
 check("头像锁仓按钮样式", ".pd-avbtn.lock" in css)
 
 print("\n" + ("全部通过" if not fails else f"失败 {len(fails)} 项：{fails}"))
