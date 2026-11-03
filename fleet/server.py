@@ -448,7 +448,7 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
 
     @app.post("/api/strategy/library/delete")
     def library_delete(body: dict):
-        """删除 EA 库里的 .ex5 / .set（本机 data/ea_library）。会自动清台账；在线账户尝试从图表卸下。"""
+        """删除 EA 库里的 .ex5 / .set（本机 data/ea_library）。只清台账；不卸图表 EA、不重启终端。"""
         return fleet.delete_library(str(body.get("name") or ""))
 
     @app.post("/api/strategy/deploy")

@@ -301,15 +301,13 @@ class Worker:
         """快捷 / 批量交易：若算法交易当前是关，临时打开 → 下单/平仓 → finally 再关回去。
         不改动账户的 algo_off 记忆（用户手动关闭偏好保留）；本来就是开则不动。
 
-        guard_experts=True（平仓 / 核弹 / 改单 / 撤挂单）：临时开算法前先卸下图表 EA，
-        做完并关回算法后再挂回，避免短暂开算法时 EA 补新单。市价开仓/开单不要开此开关；一键锁仓要开（补单窗口同样防 EA）。
+        绝不因交易而重启 / 重开 MT5 终端，也不卸图表 EA。
+        guard_experts 参数仅保留兼容旧调用，已忽略（v1.5.13 曾用重启卸 EA 防补单，会杀进程，已废止）。
         """
+        _ = guard_experts  # 兼容旧调用，不再触发 freeze/restart
         was = self._algo_now()
         turned = False
-        frozen = None
         try:
-            if guard_experts and was is False:
-                frozen = self._experts_freeze_for_trade()
             if was is False:
                 ok, msg, _ = self.set_algo(True)
                 if not ok:
@@ -322,78 +320,6 @@ class Worker:
                 if not ok2:
                     self.emit(type="log", action="算法交易", ok=False,
                               message=f"交易后把算法交易关回去失败：{msg2}（请在该终端工具栏手动关掉）")
-            if frozen is not None:
-                self._experts_restore_after_trade(frozen)
-
-    def _experts_freeze_for_trade(self):
-        """算法关 + 即将临时打开：卸下图表 EA。mock 只记标志；真机需重启终端使卸载生效。
-        返回快照（供恢复）或 None（无需/失败则继续交易，但已尽量尝试）。"""
-        self._last_experts_guard = True
-        if self.mock:
-            return {"mock": True}
-        from . import terminal as T
-        path = self.acc.get("terminal_path") or ""
-        if not path:
-            return None
-        try:
-            charts = T.list_charts(path)
-        except Exception:
-            charts = []
-        if not any(c.get("experts") for c in charts):
-            self._last_experts_guard = False
-            return None
-        self.progress("guard", "run", "平仓前暂时卸下图表 EA，避免开算法时补单…")
-        ok, msg = self._restart()
-        if not ok:
-            self.progress("guard", "warn", f"无法重启终端卸 EA：{msg}（仍继续平仓，请留意是否补单）")
-            self.emit(type="log", action="EA防护", ok=False, message=f"卸下图表 EA 失败：{msg}")
-            return None
-        try:
-            snap = T.freeze_chart_experts(path)
-        except Exception as e:
-            snap = None
-            self.emit(type="log", action="EA防护", ok=False, message=f"改写图表失败：{e}")
-        ok2, msg2 = self._relaunch(None)
-        if not ok2:
-            self.progress("guard", "fail", f"卸 EA 后重连失败：{msg2}")
-            if snap:
-                try:
-                    T.restore_chart_experts(path, snap)
-                except Exception:
-                    pass
-            return None
-        if snap:
-            self.progress("guard", "ok", f"已暂时卸下 {len(snap.get('files') or [])} 个图表上的 EA")
-        else:
-            self.progress("guard", "ok", "图表无 EA，跳过卸载")
-            self._last_experts_guard = False
-        return snap
-
-    def _experts_restore_after_trade(self, snap):
-        """平仓等结束后把图表 EA 挂回，并保持算法交易关闭（algo_off 记忆不变）。"""
-        if not snap or snap.get("mock"):
-            return
-        from . import terminal as T
-        path = self.acc.get("terminal_path") or ""
-        if not path:
-            return
-        self.progress("guard", "run", "正在挂回图表 EA…")
-        ok, msg = self._restart()
-        if not ok:
-            self.progress("guard", "warn", f"挂回 EA 前关终端失败：{msg}（图表文件可能仍无 EA，可重新分发）")
-            self.emit(type="log", action="EA防护", ok=False, message=f"挂回 EA 失败（关终端）：{msg}")
-            return
-        try:
-            n = T.restore_chart_experts(path, snap)
-        except Exception as e:
-            n = 0
-            self.emit(type="log", action="EA防护", ok=False, message=f"恢复图表失败：{e}")
-        ok2, msg2 = self._relaunch(None)
-        if not ok2:
-            self.progress("guard", "warn", f"挂回后重连失败：{msg2}")
-            self.emit(type="log", action="EA防护", ok=False, message=f"挂回 EA 后重连失败：{msg2}")
-            return
-        self.progress("guard", "ok", f"已挂回 {n} 个图表 EA（算法交易保持关）")
 
     def apply_algo_pref(self, snap: dict) -> tuple[dict, str]:
         """登录 / 重连后处理算法交易。
@@ -717,6 +643,29 @@ class Worker:
                                "note": note}
             except Exception as e:  # 报价失败不影响账户轮询
                 quotes[sym] = {"symbol": sym, "error": f"报价出错：{e}"}
+        sym_meta = {}
+        def _pos_meta(sym: str):
+            if sym not in sym_meta:
+                try:
+                    si = mt5.symbol_info(sym)
+                except Exception:
+                    si = None
+                digits = int(getattr(si, "digits", 5) or 5) if si is not None else 5
+                point = float(getattr(si, "point", 0) or 0) if si is not None else 0.0
+                if not point:
+                    point = 10 ** -digits
+                sym_meta[sym] = (digits, point)
+            return sym_meta[sym]
+        pos_rows = []
+        for p in positions:
+            digits, point = _pos_meta(p.symbol)
+            pos_rows.append({
+                "ticket": p.ticket, "symbol": p.symbol, "side": "buy" if p.type == 0 else "sell",
+                "volume": p.volume, "openPrice": p.price_open, "price": p.price_current, "sl": p.sl, "tp": p.tp,
+                "digits": digits, "point": point,
+                "profit": round(p.profit + getattr(p, "swap", 0.0), 2), "swap": getattr(p, "swap", 0.0),
+                "magic": p.magic, "comment": p.comment, "time": p.time,
+            })
         return {
             "account": {
                 "login": info.login, "balance": round(info.balance, 2), "equity": round(info.equity, 2),
@@ -726,12 +675,7 @@ class Worker:
                 "company": info.company, "trade_allowed": bool(info.trade_allowed),
                 "trade_expert": bool(getattr(info, "trade_expert", True)),
             },
-            "positions": [{
-                "ticket": p.ticket, "symbol": p.symbol, "side": "buy" if p.type == 0 else "sell",
-                "volume": p.volume, "openPrice": p.price_open, "price": p.price_current, "sl": p.sl, "tp": p.tp,
-                "profit": round(p.profit + getattr(p, "swap", 0.0), 2), "swap": getattr(p, "swap", 0.0),
-                "magic": p.magic, "comment": p.comment, "time": p.time,
-            } for p in positions],
+            "positions": pos_rows,
             "orders": [{
                 "ticket": o.ticket, "symbol": o.symbol, "type": int(o.type), "volume": o.volume_current,
                 "price": o.price_open, "sl": o.sl, "tp": o.tp, "magic": o.magic, "comment": o.comment,
@@ -1453,11 +1397,8 @@ class Worker:
             return
         try:
             # 下单/平仓等需要 terminal.trade_allowed；算法交易关着时临时打开再恢复（不改 algo_off）
-            # 平仓/核弹/改单/撤挂：guard_experts，避免短暂开算法时图表 EA 补新单
-            if name in ("close", "modify", "cancel_orders", "nuke", "lock"):
-                # 锁仓也护 EA：算法关时短暂打开补单，卸 EA 防补花，做完关回并记 algo_off
-                ok, msg, detail = self.with_algo_for_trade(fn, params, guard_experts=True)
-            elif name in ("order", "order_pair"):
+            # 交易路径绝不重启终端 / 不卸图表 EA（v1.5.14）
+            if name in ("close", "modify", "cancel_orders", "nuke", "lock", "order", "order_pair"):
                 ok, msg, detail = self.with_algo_for_trade(fn, params, guard_experts=False)
             else:
                 ok, msg, detail = fn(params)

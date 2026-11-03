@@ -1657,8 +1657,8 @@ class Fleet:
         return sorted(p.name for p in lib.iterdir() if p.suffix.lower() in (".ex5", ".set")) if lib.exists() else []
 
     def delete_library(self, name: str) -> dict:
-        """删除 EA 库里的本机副本（data/ea_library）。不碰 terminals 目录里的副本、不碰桌面 MT5。
-        台账若还挂着同名 .ex5（或仍引用该 .set）：在线且为本程序终端的会先尝试从图表卸下，再清台账，然后删库文件。"""
+        """删除 EA 库里的本机副本（data/ea_library）并清台账引用。
+        不停止策略、不卸图表 EA、不重启 MT5；不碰 terminals 目录副本、不碰桌面 MT5。"""
         name = os.path.basename(str(name or "").strip())
         if not name or not re.fullmatch(r'[^\\/:*?"<>|]+\.(ex5|set)', name, re.I):
             return {"ok": False, "message": "文件名不对"}
@@ -1668,29 +1668,6 @@ class Fleet:
             return {"ok": False, "message": f"EA 库里没有「{name}」"}
         low = name.lower()
         is_ex5 = low.endswith(".ex5")
-        # 收集：需要停止的在线账户 → 策略 id；以及所有要清台账的账户
-        only: dict[str, list[str]] = {}
-        touched = 0
-        for a in self.store.accounts:
-            match_sids = []
-            for s in a.get("strategies") or []:
-                if is_ex5 and (s.get("fileName") or "").lower() == low:
-                    match_sids.append(s["id"])
-                    if s.get("running"):
-                        online = self._alive(a["id"]) and self.runtime.get(a["id"], {}).get("link") == "online"
-                        owned = bool(a.get("terminal_path") and self.registry.get(a["terminal_path"])) or self.mock
-                        if online and owned:
-                            only.setdefault(a["id"], []).append(s["id"])
-                elif (not is_ex5) and (s.get("preset") or "").lower() == low:
-                    match_sids.append(s["id"])
-            if match_sids:
-                touched += 1
-        stop_fail: list[str] = []
-        if only and is_ex5:
-            out = self.stop_strategies(list(only.keys()), only, "删除库文件前停止策略")
-            for r in out.get("results") or []:
-                if not r.get("ok"):
-                    stop_fail.append(r["id"])
         cleaned = 0
         for a in self.store.accounts:
             if is_ex5:
@@ -1702,7 +1679,7 @@ class Fleet:
                     if (s.get("preset") or "").lower() == low:
                         s["preset"] = ""
                         cleaned += 1
-        if cleaned or touched:
+        if cleaned:
             self.store.save_accounts()
         try:
             path.unlink()
@@ -1711,19 +1688,10 @@ class Fleet:
         parts = [f"已从 EA 库删除「{name}」"]
         if cleaned:
             parts.append(f"并已从台账清掉 {cleaned} 条相关记录" if is_ex5 else f"并已清空 {cleaned} 条策略的参数文件引用")
-        if only and not stop_fail:
-            parts.append("在线账户已尝试从图表卸下")
-        elif stop_fail:
-            parts.append("部分在线账户未能从图表卸下，可稍后「一键停止/移除」或重启终端")
-        elif touched and is_ex5:
-            parts.append("离线账户只清了台账；终端图表上若还挂着同名 EA，登录后可用「一键停止/移除」")
-        else:
-            parts.append("终端里已复制的文件和桌面 MT5 都没动")
-        msg = "；".join(parts[:2]) + ("。" + "；".join(parts[2:]) if len(parts) > 2 else "")
-        if not msg.endswith("。") and not msg.endswith("）"):
-            msg += "。"
+        parts.append("MT5 图表上已挂的 EA 不动，也不会重启终端；terminals 副本与桌面 MT5 都没动")
+        msg = "；".join(parts) + "。"
         self.log("", "删除策略文件", True, f"已从 EA 库删除 {name}" + (f"（清台账 {cleaned}）" if cleaned else ""), "本机")
-        return {"ok": True, "message": msg, "name": name, "cleaned": cleaned, "stopped": len(only), "stop_fail": len(stop_fail)}
+        return {"ok": True, "message": msg, "name": name, "cleaned": cleaned, "stopped": 0, "stop_fail": 0}
 
     def shutdown(self):
         with self.lock:
