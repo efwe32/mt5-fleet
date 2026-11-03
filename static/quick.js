@@ -484,7 +484,7 @@
       if (noConfirm) return send("lock", {});
       return confirmBox({
         title: `一键锁仓 ${sym}`,
-        desc: `<div>按当前品种补齐多空手数差。若算法交易是关的，会<b>短暂打开</b>（并暂时卸下图表 EA，防补单），补完后<b>关闭算法交易并记住关闭</b>。</div>${plan.join("")}${offTxt}`,
+        desc: `<div>按当前品种补齐多空手数差。若算法交易是关的，会<b>短暂打开</b>（不重启终端、不卸图表 EA），补完后<b>关闭算法交易并记住关闭</b>。</div>${plan.join("")}${offTxt}`,
         label: "确认锁仓", tone: "primary", run: () => { send("lock", {}); },
       });
     }

@@ -1138,7 +1138,7 @@ document.addEventListener("click", async (e) => {
     const name = d.libdel;
     return modal({
       title: `删除策略文件「${esc(name)}」？`,
-      desc: `将从本机 <span class="num">data/ea_library</span> 删除这个文件，并自动从账户台账清掉同名策略记录；在线账户会尝试从图表卸下。<br><br>不会删除终端目录里已复制的文件，也不碰桌面 MT5。若个别终端仍挂着同名 EA，可稍后「一键停止/移除」或重启终端。`,
+      desc: `只删终端 EA 库（<span class="num">data/ea_library</span>）和台账记录；MT5 图表上已挂的 EA 不动，也不会重启终端。<br><br>不会删除 terminals 目录里已复制的文件，也不碰桌面 MT5。`,
       actions: [
         { label: "取消" },
         { label: "删除", tone: "danger", run: async () => {

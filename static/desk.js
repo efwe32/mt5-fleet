@@ -594,6 +594,57 @@ window.FleetMobileSheet = (function () {
     const lockBtn = document.getElementById("pdAvLock");
     if (lockBtn) lockBtn.onclick = () => lockAvSymbol();
   }
+
+  function fmtPriceLv(v, digits) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n === 0) return "—";
+    const dig = Number.isFinite(Number(digits)) ? Math.max(0, Math.min(8, Number(digits))) : undefined;
+    return dig == null ? String(n) : n.toFixed(dig);
+  }
+  function posPoint(p) {
+    const pt = Number(p && p.point);
+    if (pt > 0) return pt;
+    const dig = Number(p && p.digits);
+    if (Number.isFinite(dig) && dig >= 0) return Math.pow(10, -dig);
+    const open = Number(p && p.openPrice);
+    if (!Number.isFinite(open) || open === 0) return 0;
+    const s = String(p.openPrice);
+    const i = s.indexOf(".");
+    const inferred = i >= 0 ? (s.length - i - 1) : 0;
+    return inferred > 0 ? Math.pow(10, -inferred) : 0.00001;
+  }
+  function tpPointsOf(p) {
+    const tp = Number(p && p.tp) || 0;
+    if (!tp) return null;
+    const open = Number(p && p.openPrice) || 0;
+    const point = posPoint(p);
+    if (!open || !point) return null;
+    return Math.round(Math.abs(tp - open) / point);
+  }
+  function slPointsOf(p) {
+    const sl = Number(p && p.sl) || 0;
+    if (!sl) return null;
+    const open = Number(p && p.openPrice) || 0;
+    const point = posPoint(p);
+    if (!open || !point) return null;
+    return Math.round(Math.abs(sl - open) / point);
+  }
+  function posQueueSummary(pos) {
+    let longLots = 0, shortLots = 0, fl = 0, withTp = 0;
+    (pos || []).forEach((p) => {
+      const v = Number(p.volume) || 0;
+      if (p.side === "buy") longLots += v; else shortLots += v;
+      fl += Number(p.profit) || 0;
+      if (Number(p.tp)) withTp += 1;
+    });
+    longLots = Math.round(longLots * 100) / 100;
+    shortLots = Math.round(shortLots * 100) / 100;
+    const net = Math.round((longLots - shortLots) * 100) / 100;
+    const netTxt = net === 0 ? "已锁平" : (net > 0 ? `净多 ${nf(net)}` : `净空 ${nf(-net)}`);
+    const tpTip = withTp ? `有止盈 ${withTp} 笔` : "均未设止盈";
+    return `队列汇总：多 ${nf(longLots)} / 空 ${nf(shortLots)} · ${netTxt} · 浮盈合计 <b class="${fl > 0 ? "pd-g" : fl < 0 ? "pd-r" : ""}">${sgn(fl)}</b> · ${tpTip}`;
+  }
+
   function patchAvLive(sh, a, pos, online, bal, eq, fl, today, ccy) {
     const setTxt = (sel, t, clsName) => {
       const el = sh.querySelector(sel); if (!el) return;
@@ -637,15 +688,37 @@ window.FleetMobileSheet = (function () {
     sh.querySelectorAll("tr[data-ticket]").forEach((tr) => {
       const p = byTicket.get(String(tr.dataset.ticket)); if (!p) return;
       const pl = Number(p.profit) || 0;
+      const dig = p.digits;
       const px = tr.querySelector("[data-live=px]");
       const plEl = tr.querySelector("[data-live=pl]");
+      const slEl = tr.querySelector("[data-live=sl]");
+      const tpEl = tr.querySelector("[data-live=tp]");
+      const tpPtsEl = tr.querySelector("[data-live=tpPts]");
       if (px && px.textContent !== String(p.price)) px.textContent = String(p.price);
       if (plEl) {
         const t = sgn(pl);
         if (plEl.textContent !== t) plEl.textContent = t;
         plEl.className = "num " + (pl > 0 ? "pd-g" : pl < 0 ? "pd-r" : "");
       }
+      if (slEl) {
+        const t = fmtPriceLv(p.sl, dig);
+        if (slEl.textContent !== t) slEl.textContent = t;
+      }
+      if (tpEl) {
+        const t = fmtPriceLv(p.tp, dig);
+        if (tpEl.textContent !== t) tpEl.textContent = t;
+      }
+      if (tpPtsEl) {
+        const pts = tpPointsOf(p);
+        const t = pts == null ? "—" : String(pts);
+        if (tpPtsEl.textContent !== t) tpPtsEl.textContent = t;
+      }
     });
+    const sumEl = sh.querySelector("[data-av=posSum]");
+    if (sumEl && online && pos.length) {
+      const html = posQueueSummary(pos);
+      if (sumEl.innerHTML !== html) sumEl.innerHTML = html;
+    }
     const dis = !online || !!D.detailBusy;
     ["pdAvSym", "pdAvLots", "pdAvBuy", "pdAvSell", "pdAvLock", "pdAvPendPrice", "pdAvPendSL", "pdAvPendTP", "pdAvPendUnit", "pdAvHangLong", "pdAvHangShort"].forEach((id) => {
       const el = document.getElementById(id); if (el) el.disabled = dis;
@@ -705,13 +778,15 @@ window.FleetMobileSheet = (function () {
       : !pos.length
         ? `<p class="pd-avempty">当前没有持仓。</p>`
         : `<div class="pd-avtw"><table><thead><tr>
-            <th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>现价</th><th>盈亏</th><th>魔术号</th><th></th>
+            <th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>现价</th><th>盈亏</th><th>止损</th><th>止盈</th><th>止盈点位</th><th>魔术号</th><th></th>
           </tr></thead><tbody>
           ${pos.map((p) => {
             const side = p.side === "buy" ? "多" : "空";
             const sc = p.side === "buy" ? "pd-g" : "pd-r";
             const pl = Number(p.profit) || 0;
             const plc = pl > 0 ? "pd-g" : pl < 0 ? "pd-r" : "";
+            const dig = p.digits;
+            const tpPts = tpPointsOf(p);
             return `<tr data-ticket="${esc(p.ticket)}">
               <td>${esc(p.symbol)}</td>
               <td class="${sc}">${side}</td>
@@ -719,11 +794,15 @@ window.FleetMobileSheet = (function () {
               <td class="num">${esc(p.openPrice)}</td>
               <td class="num" data-live="px">${esc(p.price)}</td>
               <td class="num ${plc}" data-live="pl">${sgn(pl)}</td>
+              <td class="num" data-live="sl">${fmtPriceLv(p.sl, dig)}</td>
+              <td class="num" data-live="tp">${fmtPriceLv(p.tp, dig)}</td>
+              <td class="num" data-live="tpPts">${tpPts == null ? "—" : tpPts}</td>
               <td class="num">${p.magic == null ? "—" : esc(p.magic)}</td>
               <td><button type="button" class="pd-avbtn danger" data-avclose="${esc(a.id)}:${esc(p.ticket)}" ${D.detailBusy ? "disabled" : ""}>平仓</button></td>
             </tr>`;
           }).join("")}
-          </tbody></table></div>`;
+          </tbody></table></div>
+          <p class="pd-avpossum" data-av="posSum">${posQueueSummary(pos)}</p>`;
     sh._avKey = structKey;
     sh.innerHTML = `
       <div class="pd-avhd" style="--c:${col}">
@@ -762,7 +841,7 @@ window.FleetMobileSheet = (function () {
           <button type="button" class="pd-avbtn sell" id="pdAvSell" ${!online || D.detailBusy ? "disabled" : ""}>开空</button>
           <button type="button" class="pd-avbtn lock" id="pdAvLock" title="按上方品种补齐多空手数差并关闭算法交易" ${!online || D.detailBusy ? "disabled" : ""}>一键锁仓</button>
         </div>
-        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。「一键锁仓」只锁本账户当前品种；算法关着也会短暂打开（卸 EA），补完后关闭并记住。</p>
+        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。「一键锁仓」只锁本账户当前品种；算法关着也会短暂打开（不重启终端），补完后关闭并记住。</p>
       </div>
       <div class="pd-avsec pd-avpend">
         <div class="pd-avsec-t">预订单（仅本账户）</div>
@@ -806,11 +885,11 @@ window.FleetMobileSheet = (function () {
     else tip = `多 ${nf(longLots)} / 空 ${nf(shortLots)} → <b class="pd-r">补空 ${nf(diff)}</b>`;
     const off = !(a.terminal && a.terminal.trade_allowed);
     const offTxt = off
-      ? `<div class="small muted" style="margin-top:6px">该账户算法交易当前是关的：会短暂打开并暂时卸下图表 EA，补完后关闭并记住关闭。</div>`
+      ? `<div class="small muted" style="margin-top:6px">该账户算法交易当前是关的：会短暂打开（不重启、不卸图表 EA），补完后关闭并记住关闭。</div>`
       : `<div class="small muted" style="margin-top:6px">补完后会关闭该账户算法交易并记住关闭（避免 EA 立刻再开仓）。</div>`;
     FT.confirmBox({
       title: `一键锁仓 ${sym}`,
-      desc: `<div>${esc(a.alias || a.login)} · 仅本账户 · 按品种补齐多空手数差。若算法交易是关的，会<b>短暂打开</b>（并暂时卸下图表 EA，防补单），补完后<b>关闭算法交易并记住关闭</b>。</div><div style="margin-top:8px">${tip}</div>${offTxt}`,
+      desc: `<div>${esc(a.alias || a.login)} · 仅本账户 · 按品种补齐多空手数差。若算法交易是关的，会<b>短暂打开</b>（不重启终端、不卸图表 EA），补完后<b>关闭算法交易并记住关闭</b>。</div><div style="margin-top:8px">${tip}</div>${offTxt}`,
       label: "确认锁仓",
       tone: "primary",
       run: async () => {
