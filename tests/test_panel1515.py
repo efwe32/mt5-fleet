@@ -22,7 +22,7 @@ def check(name, cond, info=""):
         fails.append(name)
 
 
-check("版本 1.5.15", __version__ == "1.5.15", __version__)
+check("版本 ≥1.5.15", tuple(int(x) for x in __version__.split(".")[:3]) >= (1, 5, 15), __version__)
 
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -38,7 +38,7 @@ css = (ROOT / "static" / "desk.css").read_text(encoding="utf-8")
 pend = (ROOT / "static" / "pending.js").read_text(encoding="utf-8")
 
 check("更新说明 v1.5.15", "## v1.5.15" in notes and "图表 EA" in notes and "工具栏" in notes and "头像" in notes)
-check("README 本次更新 1.5.15", "v1.5.15" in readme and "图表 EA" in readme)
+check("README 含 1.5.15", "v1.5.15" in readme and "图表 EA" in readme)
 
 # 源码门禁：交易路径不得关工具栏、不得为交易重启
 check("有 ensure_toolbar_algo_on", "def ensure_toolbar_algo_on" in worker)
@@ -48,7 +48,7 @@ check("worker 无 set_algo(False)", "set_algo(False)" not in worker)
 check("cmd_lock 不关工具栏", "set_algo(False)" not in worker[worker.find("def cmd_lock"):worker.find("def _match")])
 check("默认 apply_algo_pref 不关工具栏", "set_algo(False)" not in worker[worker.find("def apply_algo_pref"):worker.find("def cmd_algo")])
 check("with_algo 无 finally 关闭", "set_algo(False)" not in worker[worker.find("def with_algo_for_trade"):worker.find("def _ea_already_in_state")])
-check("cmd_algo 关闭文案", "EA 已禁止自动交易" in worker and "工具栏为面板保持开" in worker and "开平仓仍可用" in worker)
+check("cmd_algo 关闭文案", "EA 已禁止自动交易" in worker and "未改工具栏按钮" in worker)
 
 # UI：不再说短暂打开；开关不绑 trade_allowed
 for name, src in (("algo.js", aj), ("quick.js", qj), ("desk.js", desk), ("app.js", app), ("index.html", html), ("pending.js", pend)):
@@ -56,8 +56,8 @@ for name, src in (("algo.js", aj), ("quick.js", qj), ("desk.js", desk), ("app.js
 check("algo.js 开关函数不读 trade_allowed", "trade_allowed" not in aj[aj.find("function algoOf"):aj.find("function pickLabel")])
 check("algo.js 绑 ea_trading/algo_off", "ea_trading" in aj and "algo_off" in aj)
 check("app.js termTag 绑 eaTradingOf", "function eaTradingOf" in app and "图表 EA" in app)
-check("index 说明不管工具栏灯", "不是工具栏那颗灯" in html and "不等于 EA 可下单" in html)
-check("设置文案是允许图表 EA", "登录后默认允许图表 EA 自动交易" in html)
+check("index 说明不管工具栏灯", "不是工具栏那颗灯" in html and "不会擅自打开或关闭工具栏" in html)
+check("设置文案不再承诺登录改算法", "不干预" in html and "setAlgo" in html)
 check("头像有本账户算法开关", "pdAvAlgoOn" in desk and "pdAvAlgoOff" in desk and "function toggleAvAlgo" in desk)
 check("头像开关绑 eaTradingOf", "function eaTradingOf" in desk and "toggleAvAlgo" in desk)
 check("头像 structKey 含算法状态", "eaTradingOf(a)" in desk and "algo_off" in desk)
@@ -152,17 +152,14 @@ check("锁仓后工具栏仍开", w._algo_now() is True)
 check("锁仓后 algo_off 为 True", w.acc.get("algo_off") is True)
 check("锁仓文案禁止 EA 而非关工具栏", "禁止图表 EA" in msg or "已禁止" in msg, msg)
 
-# 默认 apply_algo_pref：mock-pass 工具栏本来开，不得关掉
+# 默认 apply_algo_pref：不改 algo_off，不关已开的工具栏
 w2 = make_worker(password="mock-pass", algo_off=False)
-# connect 已经跑过 apply_algo_pref
-check("默认登录后 algo_off=True", w2.acc.get("algo_off") is True)
+check("默认登录后 algo_off 保持原值", w2.acc.get("algo_off") is False)
 check("默认登录不关工具栏（保持开）", w2._algo_now() is True, w2._algo_now())
-check("默认登录静音了 EA（mock 标记）", getattr(w2, "_ea_trade_locked", None) is True)
 
-# noalgo：登录时工具栏是关的，应当打开一次
+# noalgo：登录时工具栏是关的，不得打开
 w3_acc = {"id": "y", "login": "123456", "server": "S", "terminal_path": "/tmp/y/terminal64.exe", "algo_off": True}
 w3 = Worker(w3_acc, "noalgo", {"auto_enable_algo": False}, queue.Queue(), queue.Queue(), True, "/tmp/fleet1515w3")
-# spy before connect
 set3 = []
 real3 = Worker.set_algo
 def spy3(self, on):
@@ -171,8 +168,8 @@ def spy3(self, on):
 w3.set_algo = spy3.__get__(w3, Worker)
 ok, msg = w3.connect()
 check("noalgo 登录成功", ok, msg)
-check("工具栏原本关：登录只打开一次", set3 == [True], set3)
-check("noalgo 登录后工具栏开、EA 禁止", w3._algo_now() is True and w3.acc.get("algo_off") is True)
+check("工具栏原本关：登录不调用 set_algo", set3 == [], set3)
+check("noalgo 登录后工具栏仍关、algo_off 仍禁止", w3._algo_now() is False and w3.acc.get("algo_off") is True)
 
 # cmd_algo off：不关工具栏
 w4 = make_worker()
@@ -184,7 +181,7 @@ ok, msg, d = w4.cmd_algo({"on": False})
 check("cmd_algo 关闭成功", ok, msg)
 check("关闭后工具栏仍开", w4._algo_now() is True and (d.get("trade_allowed") in (True, None) or d.get("ea_trading") is False), d)
 check("关闭不调用 set_algo(False)", False not in set4, set4)
-check("关闭文案提到 EA 禁止和工具栏保持开", "禁止自动交易" in msg and "工具栏" in msg and "开平仓仍可用" in msg, msg)
+check("关闭文案提到 EA 禁止且未改工具栏", "禁止自动交易" in msg and "未改工具栏" in msg, msg)
 check("关闭后 algo_off", w4.acc.get("algo_off") is True)
 
 ok, msg, d = w4.cmd_algo({"on": True})

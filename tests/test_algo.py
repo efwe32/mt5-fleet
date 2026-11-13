@@ -1,4 +1,4 @@
-"""v1.5.15：登录默认禁止图表 EA，工具栏保持开；面板开关管 EA；快捷交易不再关回工具栏。
+"""v1.5.16：登录/重连不改算法状态；面板开关管 EA；交易不点工具栏。
 python tests/test_algo.py
 """
 import os
@@ -26,13 +26,14 @@ def check(name, cond, info=""):
         fails.append(name)
 
 
-# ---- 启动配置：API 默认仍可写 Enabled=1；登录路径由 worker 按设置传 algo ----
+# ---- 启动配置：可显式写 Enabled；algo=None 时不写，避免改工具栏 ----
 check("启动配置可显式打开算法交易", "Enabled=1" in T._ini_lines(None, None, False, algo=True))
-check("登录默认关闭时启动配置 Enabled=0", "Enabled=0" in T._ini_lines(None, None, False, algo=False))
+check("显式关闭时启动配置 Enabled=0", "Enabled=0" in T._ini_lines(None, None, False, algo=False))
+check("不干预时启动配置不写 Enabled", "Enabled=" not in "\n".join(T._ini_lines(None, None, False, algo=None)))
 check("非 Windows 不会去发窗口消息", T.main_windows(1) == [] and T.post_algo_toggle(1) is False)
 
 
-# ---- 工作进程：默认登录关闭；设置打开时 explicit 才打开；分发强制打开 ----
+# ---- 工作进程：登录/重连不改工具栏、不改 algo_off；分发仍可打开 ----
 def worker(pw, settings=None, **acc):
     a = {"id": "x", "login": "123456", "server": "S", "terminal_path": "/tmp/x/terminal64.exe", **acc}
     w = Worker(a, pw, settings or {"auto_enable_algo": False}, queue.Queue(), queue.Queue(), True, "/tmp/fleet150w")
@@ -44,16 +45,16 @@ w, ok = worker("mock-pass", algo_off=True)
 check("手动禁止 EA 的账户：重连后仍禁止且工具栏保持开", ok and w._algo_now() is True and w.acc.get("algo_off") is True, (w._algo_now(), w.acc.get("algo_off")))
 
 w, ok = worker("noalgo")
-check("后台重连：工具栏原本关会打开一次，并标记 algo_off", ok and w._algo_now() is True and w.acc.get("algo_off") is True, (w._algo_now(), w.acc.get("algo_off")))
+check("后台重连：工具栏原本关保持关，不改 algo_off", ok and w._algo_now() is False and w.acc.get("algo_off") is not True, (w._algo_now(), w.acc.get("algo_off")))
 
-w, ok = worker("mock-pass")  # mock 默认 algo 开着
-check("后台重连：本来开着不再关掉，只禁止 EA", ok and w._algo_now() is True and w.acc.get("algo_off") is True, (w._algo_now(), w.acc.get("algo_off")))
+w, ok = worker("mock-pass")  # mock 默认 algo 开着；未标记 algo_off
+check("后台重连：本来开着保持开，不擅自禁止 EA", ok and w._algo_now() is True and w.acc.get("algo_off") is not True, (w._algo_now(), w.acc.get("algo_off")))
 
 w, ok = worker("noalgo", _explicit=True)
-check("用户点登录（默认设置）：禁止 EA，但打开工具栏", ok and w._algo_now() is True and w.acc.get("algo_off") is True, (w._algo_now(), w.acc.get("algo_off")))
+check("用户点登录：工具栏关着也不打开，不改 algo_off", ok and w._algo_now() is False and w.acc.get("algo_off") is not True, (w._algo_now(), w.acc.get("algo_off")))
 
 w, ok = worker("noalgo", {"auto_enable_algo": True}, _explicit=True)
-check("用户点登录且设置打开：没开就自动打开", ok and w._algo_now() is True)
+check("即使用户开了旧设置，登录也不自动打开工具栏", ok and w._algo_now() is False, w._algo_now())
 
 w, ok = worker("noalgo", {"auto_enable_algo": False}, _explicit=True)
 w._deploy_algo = True
@@ -103,7 +104,7 @@ try:
             time.sleep(0.3)
     check("本机页面能打开", bool(token))
     check("交易页有算法交易开关", all(x in page for x in ("算法交易开关", 'id="alOn"', 'id="alOff"', "/static/algo.js", 'id="alPick"')))
-    check("设置文案含登录后默认允许/打开", "登录后默认允许图表 EA 自动交易" in page or "登录后默认打开算法交易" in page)
+    check("设置文案含不干预", "不干预" in page or "登录后默认允许图表 EA 自动交易" in page or "登录后默认打开算法交易" in page)
     c = httpx.Client(base_url=f"http://127.0.0.1:{port}", headers={"X-Fleet-Token": token}, timeout=60)
     check("algo.js 能加载", c.get("/static/algo.js").status_code == 200)
     st0 = c.get("/api/state").json()
@@ -119,8 +120,7 @@ try:
         tb = (a.get("terminal") or {}).get("trade_allowed")
         return tb, a.get("algo_off"), a.get("ea_trading")
 
-    check("登录后工具栏开、EA 禁止", all(algo_of(i)[0] is True and algo_of(i)[1] is True and algo_of(i)[2] is False for i in ("a1", "a2", "a3")), [algo_of(i) for i in ("a1", "a2", "a3")])
-    check("登录后标记 algo_off", all(algo_of(i)[1] is True for i in ("a1", "a2", "a3")))
+    check("登录后不改工具栏、不标记 algo_off", all(algo_of(i)[0] is True and algo_of(i)[1] is not True and algo_of(i)[2] is not False for i in ("a1", "a2", "a3")), [algo_of(i) for i in ("a1", "a2", "a3")])
     check("必须说明开还是关", c.post("/api/algo", json={"ids": ["a1"]}).status_code == 400)
     r = c.post("/api/algo", json={"ids": ["a1", "a2", "a5"], "on": True}).json()
     res = {x["id"]: x for x in r["results"]}
@@ -128,10 +128,13 @@ try:
     check("一键开启：未登录的报失败并说明原因", not res["a5"]["ok"] and "未登录" in res["a5"]["message"], res["a5"])
     time.sleep(2)
     check("开启后状态是开且不再标记关闭", algo_of("a1") == (True, False, True) and algo_of("a2") == (True, False, True), (algo_of("a1"), algo_of("a2")))
-    check("没选的账户仍禁止 EA（工具栏保持开）", algo_of("a3") == (True, True, False), algo_of("a3"))
+    check("没选的账户保持登录时状态（未禁止）", algo_of("a3") == (True, False, True), algo_of("a3"))
+    c.post("/api/algo", json={"ids": ["a3"], "on": False})
+    time.sleep(1)
+    check("随后单独关闭 a3", algo_of("a3") == (True, True, False), algo_of("a3"))
     r = c.post("/api/algo", json={"ids": ["a1", "a2"], "on": False}).json()
     res = {x["id"]: x for x in r["results"]}
-    check("一键关闭：成功且持仓保留", res["a1"]["ok"] and "持仓保留" in res["a1"]["message"] and "工具栏" in res["a1"]["message"], res["a1"])
+    check("一键关闭：成功且持仓保留", res["a1"]["ok"] and "持仓保留" in res["a1"]["message"], res["a1"])
     time.sleep(2)
     check("状态里实时显示已禁止 EA，工具栏仍开", algo_of("a1") == (True, True, False) and algo_of("a2") == (True, True, False), (algo_of("a1"), algo_of("a2")))
     c.post("/api/refresh", json={"ids": ["a1"]})
