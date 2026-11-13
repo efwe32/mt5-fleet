@@ -159,7 +159,7 @@ class Store:
             "symbol_map": (a.get("symbol_map") or "").strip(),
             "strategies": list(a.get("strategies") or []),
             "last": dict(a.get("last") or {}),
-            "algo_off": bool(a.get("algo_off")),   # 用户在交易页手动关掉了算法交易：后台重连不再自动打开
+            "algo_off": bool(a.get("algo_off")),   # 面板关掉图表 EA 自动交易：重连仍禁止 EA，但工具栏为面板保持开
         }
 
     def get(self, acc_id: str) -> dict | None:

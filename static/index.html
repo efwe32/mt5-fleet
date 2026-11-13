@@ -104,7 +104,7 @@
               <button type="button" class="qb qb-cp" data-q="close_profit">平所有盈利</button>
               <button type="button" class="qb qb-cx" data-q="close_loss">平所有亏损</button>
               <button type="button" class="qb qb-nuke" data-q="nuke" title="平掉所选账户的全部持仓（所有品种）并撤销全部挂单">核弹级全平</button>
-              <button type="button" class="qb qb-lock qb-wide" data-q="lock" title="按当前品种补齐多空手数差锁仓，并关闭该账户算法交易">一键锁仓</button>
+              <button type="button" class="qb qb-lock qb-wide" data-q="lock" title="按当前品种补齐多空手数差锁仓，并禁止该账户图表 EA 自动交易（工具栏保持开，仍可开平仓）">一键锁仓</button>
               <div class="qp-auto" title="自动全平：所选账户合计浮动盈亏达到这个金额时自动核弹级全平（正数=止盈，负数=止损，0=不启用）"><input class="qp-in num" id="qAuto" inputmode="decimal" value="0.00" aria-label="自动全平金额"><button type="button" class="qb-arm" id="qArm">启用</button></div>
             </div>
             <div class="qp-res" id="qRes"></div>
@@ -155,7 +155,7 @@
           <div id="qPosList"><p class="small muted" style="margin:0">先选择账户。</p></div>
         </div>
 
-        <!-- 算法交易开关：在自选账户的 MT5 里一键打开 / 关闭「算法交易」按钮 -->
+        <!-- 算法交易开关：管所选账户图表 EA 自动交易，不是工具栏按钮 -->
         <div class="panel al-panel" id="algoPanel">
           <div class="al-head">
             <h2>算法交易开关</h2>
@@ -164,7 +164,7 @@
               <div class="pd-pop hidden" id="alPop" role="dialog" aria-label="选择算法交易开关的账户"></div>
             </div>
           </div>
-          <p class="small muted" style="margin:6px 0 10px">等于在每个所选账户的 MT5 里点一下工具栏的「算法交易」按钮。关闭后 EA 停止自动下单，持仓保留；快捷交易仍可下单/平仓（会短暂打开再关回）。下面的「开 / 关」是终端自己报告的实时状态。只操作本程序启动的终端，桌面上的 MT5 不碰。</p>
+          <p class="small muted" style="margin:6px 0 10px">这个开关管的是图表 EA 是否自动交易，不是工具栏那颗灯。关闭后 EA 停止自动下单，持仓保留；关着时也能建仓、平仓、锁仓、挂预订单，不会再去点工具栏按钮。工具栏灯会为面板接口保持开，这不等于 EA 可下单。下面的「开 / 关」表示图表 EA 权限。只操作本程序启动的终端，桌面上的 MT5 不碰。</p>
           <div class="al-btns">
             <button type="button" class="btn up" id="alOn">一键开启</button>
             <button type="button" class="btn danger" id="alOff">一键关闭</button>
@@ -263,7 +263,7 @@
           </div>
           <div class="panel">
             <h2><span class="stepno">2</span>一键分发到账户</h2>
-            <p class="small muted" style="margin:4px 0 12px">选账户、品种、周期、魔术号，点「分发」后自动：复制 EA → 重启终端 → 挂到图表并打开算法交易 → 校验。未登录的账户会先自动登录。</p>
+            <p class="small muted" style="margin:4px 0 12px">选账户、品种、周期、魔术号，点「分发」后自动：复制 EA → 重启终端 → 挂到图表并允许 EA 自动交易 → 校验。未登录的账户会先自动登录。</p>
             <div class="row">
               <button class="btn primary" data-act="distribute">分发…</button>
               <button class="btn" data-act="stop-strats">一键停止（已勾选账户）</button>
@@ -443,7 +443,7 @@
             <label class="field"><span>默认缩放分组（逗号分隔）</span><input class="input" id="setGroups"></label>
             <label class="field"><span>断开时关闭（本程序启动的）终端</span><select class="input" id="setCloseTerm"><option value="0">否（只断开本程序的连接）</option><option value="1">是</option></select></label>
             <label class="field"><span>退出程序时关闭（本程序启动的）终端</span><select class="input" id="setCloseExit"><option value="1">是（EA 会随终端停止）</option><option value="0">否（终端和 EA 继续运行）</option></select></label>
-            <label class="field"><span>登录后默认打开算法交易</span><select class="input" id="setAlgo"><option value="0">否（推荐：登录/开机保持关闭，交易页可一键开启；分发 EA 仍会打开）</option><option value="1">是（登录后自动打开，EA 可马上跑）</option></select></label>
+            <label class="field"><span>登录后默认允许图表 EA 自动交易</span><select class="input" id="setAlgo"><option value="0">否（推荐：登录/开机禁止图表 EA 自动交易，交易页可一键开启；分发 EA 仍会允许。关着也能建仓平仓，不会点工具栏按钮）</option><option value="1">是（登录后允许图表 EA 自动交易）</option></select></label>
             <label class="field"><span>允许 EA 调用 DLL</span><select class="input" id="setDll"><option value="0">否（推荐）</option><option value="1">是（EA 需要时才开）</option></select></label>
             <label class="field"><span>一键登录同时处理的账户数</span><input class="input num" id="setLoginConc" inputmode="numeric"></label>
             <label class="field"><span>分发 EA 同时处理的账户数</span><input class="input num" id="setDistConc" inputmode="numeric"></label>

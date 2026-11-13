@@ -258,9 +258,16 @@ function linkBadge(a) {
   const tip = a.linkError ? ` title="${esc(a.linkError)}"` : "";
   return `<span class="small muted" style="display:inline-flex;gap:8px;align-items:center"${tip}><span class="dot ${m[1]}"></span><span class="${m[2]}">${m[0]}</span></span>`;
 }
+function eaTradingOf(a) {
+  if (a.ea_trading != null) return !!a.ea_trading;
+  if (a.algoEnabled != null) return !!a.algoEnabled;
+  return !a.algo_off;
+}
 function termTag(a) {
-  if (a.link !== "online" || !a.terminal) return a.ownedTerminal ? `<span class="tag" title="这个终端由本程序启动">本程序启动</span>` : "";
-  return a.terminal.trade_allowed ? `<span class="tag ok" title="终端的算法交易已开启（EA 可自动下单）">算法交易 开</span>` : `<span class="tag warn" title="算法交易已关：EA 不会自动下单；快捷交易仍可下单（会短暂打开再关回）">算法交易 关</span>`;
+  if (a.link !== "online") return a.ownedTerminal ? `<span class="tag" title="这个终端由本程序启动">本程序启动</span>` : "";
+  return eaTradingOf(a)
+    ? `<span class="tag ok" title="图表 EA 允许自动交易。工具栏灯为面板接口保持开。">算法交易 开</span>`
+    : `<span class="tag warn" title="图表 EA 已禁止自动交易。关着也能建仓平仓，不会点工具栏按钮。工具栏灯为面板接口保持开，不等于 EA 可下单。">算法交易 关</span>`;
 }
 
 // ---------------- 账号页 ----------------
@@ -397,10 +404,10 @@ function renderAccounts() {
   const list = filtered();
   list.forEach((a) => { ui.live[a.id + ":bal"] = money(a.balance); ui.live[a.id + ":eq"] = money(a.equity); ui.live[a.id + ":fl"] = money(a.floating, true); ui.live[a.id + ":pos"] = String(a.positionsCount); });
   const view = list.map((a) => [a.id, a.alias, a.login, a.server, a.group, a.enabled, a.link, a.linkError,
-    a.strategies.map((s) => s.running), a.terminal?.trade_allowed, a.ownedTerminal, a.has_password, ui.selected.has(a.id), a.terminal_path, a.lot_multiplier, a.symbol_suffix]);
+    a.strategies.map((s) => s.running), a.algo_off, a.ea_trading, a.ownedTerminal, a.has_password, ui.selected.has(a.id), a.terminal_path, a.lot_multiplier, a.symbol_suffix]);
   once("acc", [view, ui.search, ui.group], () => { withTableScroll("#accList", () => {
     if (!list.length) {
-      $("#accList").innerHTML = `<div class="empty"><h2>${st.accounts.length ? "没有匹配的账户" : "还没有账户"}</h2><p>${st.accounts.length ? "换个关键词，或点「添加并登录」。" : "点「添加并登录」，填账号、交易密码、服务器即可：程序会自动复制一份独立的 MT5、启动并登录（算法交易默认关闭，交易页可一键开启）。也可以一次粘贴多个账户。"}</p><div class="row"><button class="btn primary" data-act="quick">添加并登录</button></div></div>`;
+      $("#accList").innerHTML = `<div class="empty"><h2>${st.accounts.length ? "没有匹配的账户" : "还没有账户"}</h2><p>${st.accounts.length ? "换个关键词，或点「添加并登录」。" : "点「添加并登录」，填账号、交易密码、服务器即可：程序会自动复制一份独立的 MT5、启动并登录（图表 EA 默认禁止自动交易，关着也能建仓平仓；交易页可一键开启）。也可以一次粘贴多个账户。"}</p><div class="row"><button class="btn primary" data-act="quick">添加并登录</button></div></div>`;
       return;
     }
     const allOn = list.every((a) => ui.selected.has(a.id));
@@ -492,7 +499,7 @@ function quickForm() {
   let mode = "one";
   modal({
     title: "添加并登录", wide: true,
-    desc: `填好账号、交易密码、服务器后，程序会自动完成：<div class="flow" style="margin-top:6px"><b>创建副本</b>→<b>启动终端</b>→<b>登录</b>→<b>算法交易保持关闭</b></div>`,
+    desc: `填好账号、交易密码、服务器后，程序会自动完成：<div class="flow" style="margin-top:6px"><b>创建副本</b>→<b>启动终端</b>→<b>登录</b>→<b>图表 EA 默认禁止</b></div>`,
     body: `<div class="seg" role="tablist"><button type="button" class="on" data-qmode="one">单个账户</button><button type="button" data-qmode="many">批量粘贴</button></div>
       <div id="qOne"><div class="grid2">
         <label class="field"><span>账号</span><input class="input num" name="login" inputmode="numeric" autocomplete="off" placeholder="例如 51002811"></label>
