@@ -484,7 +484,7 @@
       if (noConfirm) return send("lock", {});
       return confirmBox({
         title: `一键锁仓 ${sym}`,
-        desc: `<div>按当前品种补齐多空手数差。补完后会<b>禁止该账户图表 EA 自动交易</b>（避免 EA 立刻再开仓）。面板算法关着也能锁仓，<b>不会去点工具栏按钮，不重启终端</b>。工具栏灯为面板接口保持开，不等于 EA 可下单。</div>${plan.join("")}${offTxt}`,
+        desc: `<div>按当前品种补齐多空手数差。补完后会<b>禁止该账户图表 EA 自动交易</b>（避免 EA 立刻再开仓）。面板算法关着也能锁仓（工具栏需本来是开的），<b>不会去点工具栏按钮，不重启终端</b>。</div>${plan.join("")}${offTxt}`,
         label: "确认锁仓", tone: "primary", run: () => { send("lock", {}); },
       });
     }

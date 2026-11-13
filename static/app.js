@@ -266,8 +266,8 @@ function eaTradingOf(a) {
 function termTag(a) {
   if (a.link !== "online") return a.ownedTerminal ? `<span class="tag" title="这个终端由本程序启动">本程序启动</span>` : "";
   return eaTradingOf(a)
-    ? `<span class="tag ok" title="图表 EA 允许自动交易。工具栏灯为面板接口保持开。">算法交易 开</span>`
-    : `<span class="tag warn" title="图表 EA 已禁止自动交易。关着也能建仓平仓，不会点工具栏按钮。工具栏灯为面板接口保持开，不等于 EA 可下单。">算法交易 关</span>`;
+    ? `<span class="tag ok" title="图表 EA 允许自动交易。工具栏原来开着保持开，关着保持关；本程序不会擅自改它。">算法交易 开</span>`
+    : `<span class="tag warn" title="图表 EA 已禁止自动交易。工具栏若本来是开的，仍能建仓平仓；不会点工具栏按钮，也不重启终端。">算法交易 关</span>`;
 }
 
 // ---------------- 账号页 ----------------
@@ -407,7 +407,7 @@ function renderAccounts() {
     a.strategies.map((s) => s.running), a.algo_off, a.ea_trading, a.ownedTerminal, a.has_password, ui.selected.has(a.id), a.terminal_path, a.lot_multiplier, a.symbol_suffix]);
   once("acc", [view, ui.search, ui.group], () => { withTableScroll("#accList", () => {
     if (!list.length) {
-      $("#accList").innerHTML = `<div class="empty"><h2>${st.accounts.length ? "没有匹配的账户" : "还没有账户"}</h2><p>${st.accounts.length ? "换个关键词，或点「添加并登录」。" : "点「添加并登录」，填账号、交易密码、服务器即可：程序会自动复制一份独立的 MT5、启动并登录（图表 EA 默认禁止自动交易，关着也能建仓平仓；交易页可一键开启）。也可以一次粘贴多个账户。"}</p><div class="row"><button class="btn primary" data-act="quick">添加并登录</button></div></div>`;
+      $("#accList").innerHTML = `<div class="empty"><h2>${st.accounts.length ? "没有匹配的账户" : "还没有账户"}</h2><p>${st.accounts.length ? "换个关键词，或点「添加并登录」。" : "点「添加并登录」，填账号、交易密码、服务器即可：程序会自动复制一份独立的 MT5、启动并登录（不改已有算法状态；若要改图表 EA，请到交易页或头像详情手动切换）。也可以一次粘贴多个账户。"}</p><div class="row"><button class="btn primary" data-act="quick">添加并登录</button></div></div>`;
       return;
     }
     const allOn = list.every((a) => ui.selected.has(a.id));
@@ -499,7 +499,7 @@ function quickForm() {
   let mode = "one";
   modal({
     title: "添加并登录", wide: true,
-    desc: `填好账号、交易密码、服务器后，程序会自动完成：<div class="flow" style="margin-top:6px"><b>创建副本</b>→<b>启动终端</b>→<b>登录</b>→<b>图表 EA 默认禁止</b></div>`,
+    desc: `填好账号、交易密码、服务器后，程序会自动完成：<div class="flow" style="margin-top:6px"><b>创建副本</b>→<b>启动终端</b>→<b>登录</b>→<b>保持算法状态</b></div>`,
     body: `<div class="seg" role="tablist"><button type="button" class="on" data-qmode="one">单个账户</button><button type="button" data-qmode="many">批量粘贴</button></div>
       <div id="qOne"><div class="grid2">
         <label class="field"><span>账号</span><input class="input num" name="login" inputmode="numeric" autocomplete="off" placeholder="例如 51002811"></label>
@@ -1124,7 +1124,7 @@ async function fixServers(btn) {
 }
 function welcome() {
   modal({ title: "欢迎使用 MT5 批量终端", desc: `<p>本程序为<b class="down-t">实盘</b>：批量下单、平仓、改单、部署策略都会真实发送到券商，每次执行前都会弹出确认，并受单笔 / 批量最大手数限制（设置页可改）。</p>
-    <ol class="small muted" style="padding-left:18px;line-height:1.8"><li>账号页点「添加并登录」：填账号、交易密码、服务器（可一次粘贴多个）。程序自动为每个账户复制一份独立的 MT5 到 <span class="num">terminals\\&lt;账号&gt;</span>、启动、登录并打开算法交易；不会碰你桌面上正在运行的 MT5。</li><li>策略页上传 EA（.ex5），点「分发」，选好账户、品种、周期、魔术号，自动挂到每个账户的图表上运行。</li><li>交易页可以批量下单 / 平仓；收益页看实时收益。</li></ol>`,
+    <ol class="small muted" style="padding-left:18px;line-height:1.8"><li>账号页点「添加并登录」：填账号、交易密码、服务器（可一次粘贴多个）。程序自动为每个账户复制一份独立的 MT5 到 <span class="num">terminals\\&lt;账号&gt;</span>、启动并登录；不会改已有算法开关，不会碰你桌面上正在运行的 MT5。</li><li>策略页上传 EA（.ex5），点「分发」，选好账户、品种、周期、魔术号，自动挂到每个账户的图表上运行。</li><li>交易页可以批量下单 / 平仓；收益页看实时收益。</li></ol>`,
     actions: [{ label: "开始使用", tone: "primary", run: () => { api("/api/settings", {}).catch(() => {}); } }] });
 }
 

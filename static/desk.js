@@ -850,7 +850,7 @@ window.FleetMobileSheet = (function () {
           <button type="button" class="pd-avbtn algo-on" id="pdAvAlgoOn" ${!online || D.detailBusy || D.algoBusy ? "disabled" : ""}>开启</button>
           <button type="button" class="pd-avbtn algo-off" id="pdAvAlgoOff" ${!online || D.detailBusy || D.algoBusy ? "disabled" : ""}>关闭</button>
         </div>
-        <p class="pd-avhint">这个开关只管本账户图表 EA 是否自动交易，不是工具栏那颗灯。关着时也能建仓、平仓、锁仓、挂预订单，不会去点工具栏按钮。工具栏灯为面板接口保持开，这不等于 EA 可下单。</p>
+        <p class="pd-avhint">这个开关只管本账户图表 EA 是否自动交易，不是工具栏那颗灯。关着时只要工具栏本来是开的，仍能建仓、平仓、锁仓、挂预订单；不会去点工具栏按钮，也不会重启终端。工具栏原来开着保持开，关着保持关。</p>
       </div>
       <div class="pd-avsec">
         <div class="pd-avsec-t pd-avsec-row">
@@ -906,10 +906,10 @@ window.FleetMobileSheet = (function () {
     const name = esc(a.alias || a.login);
     const desc = on
       ? `<div>允许 <b>${name}</b> 的<b>图表 EA 自动交易</b>。打开后，这个终端里挂着的 EA 会开始自动下单。</div>
-         <div class="small muted" style="margin-top:6px">这只管本账户图表 EA，不是去点工具栏按钮。工具栏灯会为面板接口保持开。</div>`
+         <div class="small muted" style="margin-top:6px">这只管本账户图表 EA，不是去点工具栏按钮，也不重启终端。工具栏原来开着保持开，关着保持关。</div>`
       : `<div>禁止 <b>${name}</b> 的<b>图表 EA 自动交易</b>。</div>
          <div style="margin-top:6px">关闭后：<b>EA 停止自动下单，已有持仓和挂单保留，不会平仓</b>。关着时也能建仓、平仓、锁仓、挂预订单，<b>不会再去点工具栏按钮</b>。</div>
-         <div class="small muted" style="margin-top:6px">工具栏灯会为面板接口保持开，这不等于 EA 可下单。</div>`;
+         <div class="small muted" style="margin-top:6px">不会去点工具栏按钮，也不会重启终端。工具栏原来开着保持开，关着保持关。</div>`;
     FT.confirmBox({
       title: on ? "开启本账户算法交易" : "关闭本账户算法交易",
       desc: desc + `<div class="small muted" style="margin-top:6px">只操作本程序启动的这个终端，桌面上你自己的 MT5 不碰。使权限立刻生效时，可能需要重启一次该终端（不会在下单/平仓时重启）。</div>`,
@@ -953,7 +953,7 @@ window.FleetMobileSheet = (function () {
     if (Math.abs(diff) < 0.00005) tip = "已锁仓/无净持仓，跳过补单，仍禁止图表 EA 自动交易";
     else if (diff < 0) tip = `空 ${nf(shortLots)} / 多 ${nf(longLots)} → <b class="pd-g">补多 ${nf(-diff)}</b>`;
     else tip = `多 ${nf(longLots)} / 空 ${nf(shortLots)} → <b class="pd-r">补空 ${nf(diff)}</b>`;
-    const offTxt = `<div class="small muted" style="margin-top:6px">补完后会禁止本账户图表 EA 自动交易（避免 EA 立刻再开仓）。面板算法关着也能锁仓，不会去点工具栏按钮，不重启终端。工具栏灯为面板接口保持开，不等于 EA 可下单。</div>`;
+    const offTxt = `<div class="small muted" style="margin-top:6px">补完后会禁止本账户图表 EA 自动交易（避免 EA 立刻再开仓）。面板算法关着也能锁仓（工具栏需本来是开的），不会去点工具栏按钮，不重启终端。</div>`;
     FT.confirmBox({
       title: `一键锁仓 ${sym}`,
       desc: `<div>${esc(a.alias || a.login)} · 仅本账户 · 按品种补齐多空手数差。</div><div style="margin-top:8px">${tip}</div>${offTxt}`,
