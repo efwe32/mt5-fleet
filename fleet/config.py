@@ -49,7 +49,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "ini_encoding": "utf-16",   # MT5 启动配置文件编码
     "close_terminal_on_disconnect": False,  # 断开时是否关闭（本程序启动的）终端
     "close_terminals_on_exit": True,
-    "auto_enable_algo": False,              # 登录/开机后是否默认打开算法交易（否=保持关闭；分发 EA 仍会打开）
+    "auto_enable_algo": False,              # 保留兼容；v1.5.16 起登录/更新/重连不再据此改算法状态（分发 EA 仍会允许）
     "template_dir": "",          # 模板 MT5 目录（空 = 自动在程序目录里找）；只读取，不会改动
     "allow_dll_import": False,   # 启动配置里的「允许 DLL 导入」
     "login_concurrency": 3,      # 一键登录同时处理的账户数
@@ -159,7 +159,7 @@ class Store:
             "symbol_map": (a.get("symbol_map") or "").strip(),
             "strategies": list(a.get("strategies") or []),
             "last": dict(a.get("last") or {}),
-            "algo_off": bool(a.get("algo_off")),   # 面板关掉图表 EA 自动交易：重连仍禁止 EA，但工具栏为面板保持开
+            "algo_off": bool(a.get("algo_off")),   # 面板关掉图表 EA 自动交易：重连保持该偏好，不改工具栏原状态
         }
 
     def get(self, acc_id: str) -> dict | None:

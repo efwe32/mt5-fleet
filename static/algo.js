@@ -160,10 +160,10 @@
     const names = live.slice(0, 8).map((a) => h(a.alias || a.login)).join("、") + (live.length > 8 ? ` 等 ${live.length} 个` : "");
     const desc = on
       ? `<div>允许 <b>${live.length}</b> 个在线账户（${names}）的<b>图表 EA 自动交易</b>。打开后，这些终端里挂着的 EA 会开始自动下单。</div>
-         <div class="small muted" style="margin-top:6px">这只管图表 EA，不是去点工具栏按钮。工具栏灯会为面板接口保持开。</div>`
+         <div class="small muted" style="margin-top:6px">这只管图表 EA，不是去点工具栏按钮，也不重启终端。工具栏原来开着保持开，关着保持关。</div>`
       : `<div>禁止 <b>${live.length}</b> 个在线账户（${names}）的<b>图表 EA 自动交易</b>。</div>
          <div style="margin-top:6px">关闭后：<b>EA 停止自动下单，已有持仓和挂单保留，不会平仓</b>。关着时也能建仓、平仓、锁仓、挂预订单，<b>不会再去点工具栏按钮</b>。</div>
-         <div class="small muted" style="margin-top:6px">工具栏灯会为面板接口保持开，这不等于 EA 可下单。后台重连和普通登录都不会自动允许 EA；只有你点「一键开启」或分发 EA 时才会重新允许。</div>`;
+         <div class="small muted" style="margin-top:6px">本程序不会擅自打开或关闭工具栏那颗灯。更新、登录、重连都不会改算法状态；只有你点「一键开启 / 一键关闭」或分发 EA 时才会改图表 EA 权限，且不会重启终端。</div>`;
     confirmBox({
       title: on ? "一键开启算法交易" : "一键关闭算法交易",
       desc: desc + `<div class="small muted" style="margin-top:6px">只操作本程序启动的终端，桌面上你自己的 MT5 不碰。使权限立刻生效时，有的账户可能需要重启一次该终端（不会在下单/平仓时重启）。</div>` + (skip ? `<div class="small muted">${skip} 个未登录 / 停用的账户会记为失败。</div>` : ""),

@@ -233,6 +233,7 @@ def _run(args, data_dir: Path, hidden: bool, log_path):
 
     def before_update_exit():
         # 在线更新重启：保存台账、结束本进程的 MT5 连接工作进程；MT5 终端不关（新版本启动后重新接管）
+        fleet._keep_terminals_on_shutdown = True
         try:
             fleet.store.save_accounts()
         except Exception:
@@ -314,9 +315,13 @@ def _run(args, data_dir: Path, hidden: bool, log_path):
     try:
         server.run()
     finally:
-        print("正在断开所有终端连接（只会关闭本程序自己启动的终端）……")
+        keep = bool(getattr(fleet, "_keep_terminals_on_shutdown", False))
+        if keep:
+            print("正在结束面板连接（更新重启：受管 MT5 终端保持运行，不改算法开关）……")
+        else:
+            print("正在断开所有终端连接（只会关闭本程序自己启动的终端）……")
         try:
-            fleet.shutdown()
+            fleet.shutdown(keep_terminals=keep)
         finally:
             lock.release()
 
