@@ -30,14 +30,14 @@ cfg = (ROOT / "fleet" / "config.py").read_text(encoding="utf-8")
 
 check("更新说明", ("## v1.5.1" in notes or "## v1.5.0" in notes) and "默认关闭算法交易" in notes and "分发" in notes)
 check("README 本次更新", ("v1.5.1" in readme or "v1.5.0" in readme) and "算法交易默认关闭" in readme)
-check("设置文案", "登录后默认打开算法交易" in html)
-check("登录步骤文案", "算法交易保持关闭" in mgr)
+check("设置文案", "登录后默认允许图表 EA 自动交易" in html or "登录后默认打开算法交易" in html)
+check("登录步骤文案", "图表 EA 默认禁止" in mgr or "算法交易保持关闭" in mgr)
 check("login 不再 clear_algo_off", "def login" in mgr and "_clear_algo_off(ids)      # 用户点的登录" not in mgr)
 check("distribute 仍 clear_algo_off", "分发是用户点的" in mgr and "_clear_algo_off(ids)" in mgr)
 check("worker 有 _deploy_algo", "_deploy_algo" in wkr)
-check("worker 默认关闭文案", "算法交易已关闭（默认）" in wkr and "算法交易保持关闭（默认）" in wkr)
+check("worker 默认关闭文案", ("图表 EA 已禁止自动交易（默认" in wkr) or ("算法交易已关闭（默认）" in wkr and "算法交易保持关闭（默认）" in wkr))
 check("algo.js 不再说登录会打开", "登录或分发" not in aj and "分发 EA" in aj)
-check("添加并登录流程文案", "算法交易保持关闭" in app)
+check("添加并登录流程文案", "图表 EA 默认禁止" in app or "算法交易保持关闭" in app)
 check("一次性迁移标记", "_v150_algo_off_default" in cfg)
 
 # 迁移：旧 settings 里 True 会被改成 False

@@ -18,7 +18,7 @@ def check(name, cond, info=""):
         fails.append(name)
 
 
-check("版本 1.5.13", __version__ == "1.5.13", __version__)
+check("版本 ≥1.5.13", tuple(int(x) for x in __version__.split(".")[:3]) >= (1, 5, 13), __version__)
 
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -52,7 +52,7 @@ check("worker handlers lock", '"lock": self.cmd_lock' in worker)
 # 平仓防 EA：v1.5.13 曾用重启卸 EA；v1.5.14 起废止，仅保留短暂开算法
 check("with_algo_for_trade 仍在", "def with_algo_for_trade" in worker)
 check("交易路径不因 guard 重启", "_experts_freeze_for_trade" not in worker and "guard_experts=True" not in worker)
-check("锁仓确认提及短暂开算法", "短暂打开" in qj and 'action === "lock"' in qj)
+check("锁仓确认不再短暂开算法", "短暂打开" not in qj and 'action === "lock"' in qj and "工具栏" in qj)
 check("terminal 仍保留 freeze/restore 工具函数", "def freeze_chart_experts" in terminal and "def restore_chart_experts" in terminal)
 
 # busy 防双击仍在
@@ -63,7 +63,7 @@ desk = (ROOT / "static" / "desk.js").read_text(encoding="utf-8")
 css = (ROOT / "static" / "desk.css").read_text(encoding="utf-8")
 check("头像详情一键锁仓按钮", 'id="pdAvLock"' in desk and "一键锁仓" in desk)
 check("lockAvSymbol 实现", "async function lockAvSymbol" in desk and '/api/quick/action' in desk and 'action: "lock"' in desk)
-check("头像锁仓确认提及短暂开算法", "短暂打开" in desk and "lockAvSymbol" in desk and "不重启" in desk)
+check("头像锁仓确认不再短暂开算法", "短暂打开" not in desk and "lockAvSymbol" in desk and "不重启" in desk)
 check("头像锁仓按钮样式", ".pd-avbtn.lock" in css)
 
 print("\n" + ("全部通过" if not fails else f"失败 {len(fails)} 项：{fails}"))

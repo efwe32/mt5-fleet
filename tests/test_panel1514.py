@@ -20,7 +20,7 @@ def check(name, cond, info=""):
         fails.append(name)
 
 
-check("版本 1.5.14", __version__ == "1.5.14", __version__)
+check("版本 ≥1.5.14", tuple(int(x) for x in __version__.split(".")[:3]) >= (1, 5, 14), __version__)
 
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -38,14 +38,20 @@ check("README 本次更新 1.5.14", "v1.5.14" in readme and "不重启" in readm
 # 1) 交易路径绝不重启
 check("已移除 _experts_freeze_for_trade", "_experts_freeze_for_trade" not in worker)
 check("已移除 _experts_restore_after_trade", "_experts_restore_after_trade" not in worker)
-check("with_algo 文档写明不重启", "绝不因交易而重启" in worker or "绝不因交易而重启" in worker)
+check("with_algo 文档写明不重启", "绝不因交易而重启" in worker or "绝不因交易重启" in worker)
 check("dispatch 交易统一 with_algo guard=False",
       'name in ("close", "modify", "cancel_orders", "nuke", "lock", "order", "order_pair")' in worker
       and "guard_experts=False" in worker
       and "guard_experts=True" not in worker)
-# _restart/_relaunch 仅应出现在 deploy/stop 路径附近，不应在 with_algo 内
-algo_fn = worker[worker.find("def with_algo_for_trade"):worker.find("def apply_algo_pref")]
-check("with_algo 体内无 _restart/_relaunch", "_restart" not in algo_fn and "_relaunch" not in algo_fn)
+# _restart/_relaunch 不应出现在交易包装函数内（apply_ea_live 仅给登录/开关/分发用）
+def _fn(src, name, nxt):
+    i = src.find(f"def {name}")
+    j = src.find(f"def {nxt}", i + 1) if i >= 0 else -1
+    return src[i:j] if i >= 0 and j > i else ""
+algo_fn = _fn(worker, "with_algo_for_trade", "_ea_already_in_state") or _fn(worker, "with_algo_for_trade", "apply_algo_pref")
+ens_fn = _fn(worker, "ensure_toolbar_algo_on", "with_algo_for_trade")
+check("with_algo 体内无 _restart/_relaunch", "self._restart" not in algo_fn and "self._relaunch" not in algo_fn, algo_fn[:200])
+check("ensure_toolbar 体内无关闭或重启终端", "self._restart" not in ens_fn and "self._relaunch" not in ens_fn and "set_algo(False)" not in ens_fn)
 check("锁仓文案不再写卸 EA 重启", "暂时卸下图表 EA" not in desk and "暂时卸下图表 EA" not in qj)
 check("锁仓文案写明不重启", "不重启" in desk and "不重启" in qj)
 
@@ -54,7 +60,7 @@ def make_worker():
     a = {"id": "x", "login": "123456", "server": "S", "terminal_path": "/tmp/x/terminal64.exe", "algo_off": True}
     w = Worker(a, "mock-pass", {"auto_enable_algo": False}, queue.Queue(), queue.Queue(), True, "/tmp/fleet1514w")
     ok, _ = w.connect()
-    assert ok and w._algo_now() is False
+    assert ok and w._algo_now() is True  # v1.5.15：登录后工具栏保持开
     return w
 
 w = make_worker()
@@ -70,7 +76,7 @@ ok, msg, d = w.with_algo_for_trade(w.cmd_order, {
     "auto_symbol": True, "deviation": 20, "magic": 880000, "max_lots": 10,
 }, guard_experts=True)  # even if caller passes True, must not restart
 check("order(guard=True) 成功且未重启", ok and calls["restart"] == 0 and calls["relaunch"] == 0, (ok, msg, calls))
-check("order 后算法关回", w._algo_now() is False)
+check("order 后工具栏保持开（不再关回）", w._algo_now() is True)
 
 calls["restart"] = calls["relaunch"] = 0
 # close all
