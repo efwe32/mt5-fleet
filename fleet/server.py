@@ -373,7 +373,7 @@ def create_app(fleet: Fleet, port: int, on_exit=None, updater=None) -> FastAPI:
 
     @app.post("/api/algo")
     def algo_switch(body: dict):
-        """交易页「一键开启 / 一键关闭算法交易」：只作用于所选、本程序启动的终端，结果按终端回读的状态报告。"""
+        """交易页「一键开启 / 一键关闭算法交易」：只管所选账户的图表 EA 自动交易，不关工具栏；结果按面板开关与终端回读报告。"""
         on = body.get("on")
         if not isinstance(on, bool):
             raise HTTPException(400, "请说明是开启还是关闭")

@@ -226,7 +226,7 @@ def _ini_lines(creds: dict | None, startup: dict | None, allow_dll: bool, algo: 
         # 登录信息只写进这个临时文件，终端启动、登录完成后立刻抹掉删除
         lines += ["[Common]", f"Login={creds['login']}", f"Password={creds['password']}", f"Server={creds['server']}",
                   "KeepPrivate=1", "NewsEnable=0", "CertInstall=0", ""]
-    # Enabled = 工具栏「算法交易」按钮。登录默认关闭时写 0；分发 EA / 用户设置打开时写 1
+    # Enabled = 工具栏「算法交易」按钮。v1.5.15 起登录也尽量写 1（先静音图表 EA），仅图表未改好时才写 0
     lines += ["[Experts]", "AllowLiveTrading=1", f"AllowDllImport={1 if allow_dll else 0}", f"Enabled={1 if algo else 0}",
               "Account=0", "Profile=0"]
     if startup:
@@ -1143,6 +1143,113 @@ def prepare_profile(terminal_path: str, symbol: str, timeframe: str, expert: dic
 
 def charts_with_expert(terminal_path: str, stem: str) -> list[str]:
     return [c["file"] for c in list_charts(terminal_path) if any(_expert_matches(e, stem) for e in c["experts"])]
+
+
+# ---------------- 图表 EA 自动交易权限（expertmode bit 0） ----------------
+# expertmode bit 0 = Allow live trading；bit 2 = Allow DLL。
+# 静音：mode & ~1（0 或 4）；恢复：mode | 1（1 或 5）。只改 <expert> 块，不动指标里的 expertmode。
+
+_EXPERTMODE_RE = re.compile(r"(?im)^(\s*expertmode\s*=\s*)(-?\d+)\s*$")
+
+
+def _patch_expertmode_text(text: str, allow: bool) -> tuple[str, int, int]:
+    """改写文本里所有 <expert> 的 expertmode。返回 (新文本, 改动的 EA 数, EA 总数)。"""
+    changed = 0
+    total = 0
+
+    def _block(m):
+        nonlocal changed, total
+        block = m.group(0)
+
+        def _mode(mm):
+            nonlocal changed, total
+            total += 1
+            try:
+                mode = int(mm.group(2))
+            except ValueError:
+                return mm.group(0)
+            new = (mode | 1) if allow else (mode & ~1)
+            if new == mode:
+                return mm.group(0)
+            changed += 1
+            return f"{mm.group(1)}{new}"
+
+        return _EXPERTMODE_RE.sub(_mode, block)
+
+    return _EXPERT_RE.sub(_block, text), changed, total
+
+
+def _write_chart_preserved(path: Path, text: str, enc: str):
+    if enc.startswith("utf-16"):
+        path.write_bytes(b"\xff\xfe" + text.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-16-le"))
+    else:
+        try:
+            path.write_text(text, encoding=enc)
+        except Exception:
+            path.write_bytes(b"\xff\xfe" + text.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-16-le"))
+
+
+def chart_experts_live_counts(terminal_path: str) -> tuple[int, int]:
+    """当前 Profile 全部图表 EA 的 (允许自动交易数, 已禁止数)。读不到或没有图表时返回 (0, 0)。"""
+    d = profile_dir(terminal_path)
+    live = muted = 0
+    if not d.exists():
+        return 0, 0
+    for f in sorted(d.glob("*.chr")):
+        try:
+            text, _enc = _read_text(f)
+        except Exception:
+            continue
+        for m in _EXPERT_RE.finditer(text):
+            mm = _EXPERTMODE_RE.search(m.group(0))
+            if not mm:
+                live += 1
+                continue
+            try:
+                mode = int(mm.group(2))
+            except ValueError:
+                live += 1
+                continue
+            if mode & 1:
+                live += 1
+            else:
+                muted += 1
+    return live, muted
+
+
+def chart_experts_need_live_change(terminal_path: str, allow: bool) -> bool:
+    """任一图表 EA 的 live 位与目标不符时返回 True。没有 EA 则无需改动。"""
+    live, muted = chart_experts_live_counts(terminal_path)
+    if live + muted == 0:
+        return False
+    return (muted > 0) if allow else (live > 0)
+
+
+def set_chart_experts_live(terminal_path: str, allow: bool) -> dict:
+    """改写当前 Profile 全部图表 <expert> 的 expertmode 第 0 位。
+    终端须已关闭，否则退出时会用内存里的图表覆盖文件。
+    返回 {changed_files, changed_experts, total_experts, allow}。"""
+    d = profile_dir(terminal_path)
+    out = {"changed_files": 0, "changed_experts": 0, "total_experts": 0, "allow": bool(allow)}
+    if not terminal_path or not d.exists():
+        return out
+    for f in sorted(d.glob("*.chr")):
+        try:
+            text, enc = _read_text(f)
+        except Exception:
+            continue
+        if not _EXPERT_RE.search(text):
+            continue
+        new, n_ch, n_tot = _patch_expertmode_text(text, allow)
+        out["total_experts"] += n_tot
+        if n_ch:
+            try:
+                _write_chart_preserved(f, new, enc)
+            except OSError:
+                continue
+            out["changed_files"] += 1
+            out["changed_experts"] += n_ch
+    return out
 
 
 # ---------------- 品种名检查（券商后缀） ----------------
