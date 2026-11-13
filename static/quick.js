@@ -358,7 +358,7 @@
     };
     confirmBox({
       title: `平仓 #${ticket}？`,
-      desc: `<div>${h(a.alias)} · <b>${h(p.symbol)}</b> ${side} ${nf(p.volume)} 手，开仓 ${p.openPrice}，现价 ${p.price}，浮盈 <b class="${cls(p.profit)}">${sg(p.profit)}</b>。</div><div class="small muted" style="margin-top:6px">只平这一笔。若算法交易是关的，会短暂打开再关回。</div>`,
+      desc: `<div>${h(a.alias)} · <b>${h(p.symbol)}</b> ${side} ${nf(p.volume)} 手，开仓 ${p.openPrice}，现价 ${p.price}，浮盈 <b class="${cls(p.profit)}">${sg(p.profit)}</b>。</div><div class="small muted" style="margin-top:6px">只平这一笔。面板算法关着也能平，不会去点工具栏按钮。</div>`,
       label: "确认平仓", tone: "danger", run: () => { go(); },
     });
   }
@@ -475,7 +475,7 @@
         const shortLots = pos.filter((p) => p.side === "sell").reduce((t, p) => t + (Number(p.volume) || 0), 0);
         const diff = Math.round((longLots - shortLots) * 100) / 100;
         let tip;
-        if (Math.abs(diff) < 0.00005) tip = "已锁仓/无净持仓，跳过补单，仍关闭算法";
+        if (Math.abs(diff) < 0.00005) tip = "已锁仓/无净持仓，跳过补单，仍禁止图表 EA 自动交易";
         else if (diff < 0) tip = `空 ${nf(shortLots)} / 多 ${nf(longLots)} → <b class="q-up">补多 ${nf(-diff)}</b>`;
         else tip = `多 ${nf(longLots)} / 空 ${nf(shortLots)} → <b class="q-dn">补空 ${nf(diff)}</b>`;
         plan.push(`<div>${h(a.alias)}：${tip}</div>`);
@@ -484,7 +484,7 @@
       if (noConfirm) return send("lock", {});
       return confirmBox({
         title: `一键锁仓 ${sym}`,
-        desc: `<div>按当前品种补齐多空手数差。若算法交易是关的，会<b>短暂打开</b>（不重启终端、不卸图表 EA），补完后<b>关闭算法交易并记住关闭</b>。</div>${plan.join("")}${offTxt}`,
+        desc: `<div>按当前品种补齐多空手数差。补完后会<b>禁止该账户图表 EA 自动交易</b>（避免 EA 立刻再开仓）。面板算法关着也能锁仓，<b>不会去点工具栏按钮，不重启终端</b>。工具栏灯为面板接口保持开，不等于 EA 可下单。</div>${plan.join("")}${offTxt}`,
         label: "确认锁仓", tone: "primary", run: () => { send("lock", {}); },
       });
     }

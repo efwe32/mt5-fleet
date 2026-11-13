@@ -560,7 +560,14 @@ window.FleetMobileSheet = (function () {
     if (unitEl) D._avForm.unit = unitEl.value === "points" ? "points" : "price";
     return D._avForm || { sym: "USDJPYc", lots: "0.01", price: "", sl: "0", tp: "0", unit: "price" };
   }
-  function bindAvDetailHandlers(sh, focusClose) {
+  function eaTradingOf(a) {
+    if (!a) return false;
+    if (a.ea_trading != null) return !!a.ea_trading;
+    if (a.algoEnabled != null) return !!a.algoEnabled;
+    return !a.algo_off;
+  }
+
+    function bindAvDetailHandlers(sh, focusClose) {
     const closeBtn = document.getElementById("pdAvClose");
     if (closeBtn) {
       closeBtn.onclick = () => closeAvDetail();
@@ -593,6 +600,10 @@ window.FleetMobileSheet = (function () {
     if (hangS) hangS.onclick = () => placeAvPending("short");
     const lockBtn = document.getElementById("pdAvLock");
     if (lockBtn) lockBtn.onclick = () => lockAvSymbol();
+    const algoOn = document.getElementById("pdAvAlgoOn");
+    const algoOff = document.getElementById("pdAvAlgoOff");
+    if (algoOn) algoOn.onclick = () => toggleAvAlgo(true);
+    if (algoOff) algoOff.onclick = () => toggleAvAlgo(false);
   }
 
   function fmtPriceLv(v, digits) {
@@ -723,6 +734,16 @@ window.FleetMobileSheet = (function () {
     ["pdAvSym", "pdAvLots", "pdAvBuy", "pdAvSell", "pdAvLock", "pdAvPendPrice", "pdAvPendSL", "pdAvPendTP", "pdAvPendUnit", "pdAvHangLong", "pdAvHangShort"].forEach((id) => {
       const el = document.getElementById(id); if (el) el.disabled = dis;
     });
+    const eaOn = eaTradingOf(a);
+    const st = sh.querySelector("[data-av=algoSt]");
+    if (st) {
+      st.textContent = !online ? "—" : (eaOn ? "开" : "关");
+      st.className = "pd-avalgo-st " + (!online ? "" : (eaOn ? "on" : "off"));
+    }
+    const algoBusy = !!D.algoBusy;
+    ["pdAvAlgoOn", "pdAvAlgoOff"].forEach((id) => {
+      const el = document.getElementById(id); if (el) el.disabled = dis || algoBusy;
+    });
     sh.querySelectorAll("[data-avclose]").forEach((b) => { b.disabled = !!D.detailBusy; });
     const nBuy = pos.filter((p) => p.side === "buy").length;
     const nSell = pos.filter((p) => p.side === "sell").length;
@@ -758,7 +779,8 @@ window.FleetMobileSheet = (function () {
     const col = colorOf(a.id);
     const stCls = online ? "on" : a.link === "error" ? "err" : "";
     // 结构不变时只改数字，避免轮询重写把横向滚动打回、打断平仓点击
-    const structKey = JSON.stringify([id, online, a.link, a.alias, a.login, a.group, !!D.detailBusy,
+    const structKey = JSON.stringify([id, online, a.link, a.alias, a.login, a.group, !!D.detailBusy, !!D.algoBusy,
+      eaTradingOf(a), !!a.algo_off,
       pos.slice().sort((x, y) => String(x.ticket).localeCompare(String(y.ticket), undefined, { numeric: true }))
         .map((p) => [p.ticket, p.side, p.volume, p.symbol, p.openPrice, p.magic])]);
     if (!focusClose && sh._avKey === structKey && sh.querySelector(".pd-avmetrics")) {
@@ -821,6 +843,15 @@ window.FleetMobileSheet = (function () {
         <div class="pd-avm"><div class="lab">今日平仓</div><div class="val num ${today > 0 ? "pd-g" : today < 0 ? "pd-r" : ""}" data-avm="today">${sgn(today)}</div></div>
         <div class="pd-avm"><div class="lab">持仓笔数</div><div class="val num" data-avm="npos">${online ? pos.length : "—"}</div></div>
       </div>
+      <div class="pd-avalgo">
+        <div class="pd-avalgo-row">
+          <div class="pd-avalgo-lab">算法交易（本账户图表 EA）</div>
+          <span class="pd-avalgo-st ${!online ? "" : (eaTradingOf(a) ? "on" : "off")}" data-av="algoSt">${!online ? "—" : (eaTradingOf(a) ? "开" : "关")}</span>
+          <button type="button" class="pd-avbtn algo-on" id="pdAvAlgoOn" ${!online || D.detailBusy || D.algoBusy ? "disabled" : ""}>开启</button>
+          <button type="button" class="pd-avbtn algo-off" id="pdAvAlgoOff" ${!online || D.detailBusy || D.algoBusy ? "disabled" : ""}>关闭</button>
+        </div>
+        <p class="pd-avhint">这个开关只管本账户图表 EA 是否自动交易，不是工具栏那颗灯。关着时也能建仓、平仓、锁仓、挂预订单，不会去点工具栏按钮。工具栏灯为面板接口保持开，这不等于 EA 可下单。</p>
+      </div>
       <div class="pd-avsec">
         <div class="pd-avsec-t pd-avsec-row">
           <span>持仓</span>
@@ -839,9 +870,9 @@ window.FleetMobileSheet = (function () {
           <label>手数<input type="number" id="pdAvLots" min="0.01" step="0.01" value="${esc(form.lots || "0.01")}" ${!online || D.detailBusy ? "disabled" : ""}></label>
           <button type="button" class="pd-avbtn buy" id="pdAvBuy" ${!online || D.detailBusy ? "disabled" : ""}>开多</button>
           <button type="button" class="pd-avbtn sell" id="pdAvSell" ${!online || D.detailBusy ? "disabled" : ""}>开空</button>
-          <button type="button" class="pd-avbtn lock" id="pdAvLock" title="按上方品种补齐多空手数差并关闭算法交易" ${!online || D.detailBusy ? "disabled" : ""}>一键锁仓</button>
+          <button type="button" class="pd-avbtn lock" id="pdAvLock" title="按上方品种补齐多空手数差，并禁止本账户图表 EA 自动交易（工具栏保持开，仍可开平仓）" ${!online || D.detailBusy ? "disabled" : ""}>一键锁仓</button>
         </div>
-        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。「一键锁仓」只锁本账户当前品种；算法关着也会短暂打开（不重启终端），补完后关闭并记住。</p>
+        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。「一键锁仓」只锁本账户当前品种；面板算法关着也能锁，不会点工具栏、不重启终端。补完后禁止本账户图表 EA 自动交易。</p>
       </div>
       <div class="pd-avsec pd-avpend">
         <div class="pd-avsec-t">预订单（仅本账户）</div>
@@ -864,7 +895,46 @@ window.FleetMobileSheet = (function () {
       if (el) { try { el.focus(); el.setSelectionRange(selStart, selEnd); } catch (e) { /* */ } }
     }
   }
-  async function lockAvSymbol() {
+  async function toggleAvAlgo(on) {
+    const id = D.detailId;
+    const a = accById(id);
+    if (!a) return;
+    const FT = window.FleetTrade;
+    if (a.link !== "online") { if (FT && FT.toast) FT.toast("账户不在线", true); return; }
+    if (!FT || !FT.api || !FT.confirmBox) { if (FT && FT.toast) FT.toast("交易接口未就绪，请刷新页面", true); return; }
+    if (D.algoBusy) { FT.toast("上一次开关还在执行", true); return; }
+    const name = esc(a.alias || a.login);
+    const desc = on
+      ? `<div>允许 <b>${name}</b> 的<b>图表 EA 自动交易</b>。打开后，这个终端里挂着的 EA 会开始自动下单。</div>
+         <div class="small muted" style="margin-top:6px">这只管本账户图表 EA，不是去点工具栏按钮。工具栏灯会为面板接口保持开。</div>`
+      : `<div>禁止 <b>${name}</b> 的<b>图表 EA 自动交易</b>。</div>
+         <div style="margin-top:6px">关闭后：<b>EA 停止自动下单，已有持仓和挂单保留，不会平仓</b>。关着时也能建仓、平仓、锁仓、挂预订单，<b>不会再去点工具栏按钮</b>。</div>
+         <div class="small muted" style="margin-top:6px">工具栏灯会为面板接口保持开，这不等于 EA 可下单。</div>`;
+    FT.confirmBox({
+      title: on ? "开启本账户算法交易" : "关闭本账户算法交易",
+      desc: desc + `<div class="small muted" style="margin-top:6px">只操作本程序启动的这个终端，桌面上你自己的 MT5 不碰。使权限立刻生效时，可能需要重启一次该终端（不会在下单/平仓时重启）。</div>`,
+      label: on ? "确认开启" : "确认关闭",
+      tone: on ? "up" : "danger",
+      run: async () => {
+        D.algoBusy = true; renderAvDetail(false);
+        try {
+          const r = await FT.api("/api/algo", { ids: [id], on: !!on });
+          const bad = (r.results || []).filter((x) => !x.ok);
+          const title = r.title || (on ? "开启算法交易" : "关闭算法交易");
+          if (bad.length) FT.toast(`${title}：失败。${bad[0].alias}：${bad[0].message}`, true);
+          else FT.toast(`${title}：${(r.results && r.results[0] && r.results[0].message) || "成功"}`);
+          if (typeof poll === "function") poll();
+        } catch (e) {
+          FT.toast(e.message || String(e), true);
+          return true;
+        } finally {
+          D.algoBusy = false;
+          if (D.detailId) renderAvDetail(false);
+        }
+      },
+    });
+  }
+    async function lockAvSymbol() {
     const id = D.detailId;
     const a = accById(id);
     if (!a) return;
@@ -880,16 +950,13 @@ window.FleetMobileSheet = (function () {
     const shortLots = pos.filter((p) => p.side === "sell").reduce((t, p) => t + (Number(p.volume) || 0), 0);
     const diff = Math.round((longLots - shortLots) * 100) / 100;
     let tip;
-    if (Math.abs(diff) < 0.00005) tip = "已锁仓/无净持仓，跳过补单，仍关闭算法";
+    if (Math.abs(diff) < 0.00005) tip = "已锁仓/无净持仓，跳过补单，仍禁止图表 EA 自动交易";
     else if (diff < 0) tip = `空 ${nf(shortLots)} / 多 ${nf(longLots)} → <b class="pd-g">补多 ${nf(-diff)}</b>`;
     else tip = `多 ${nf(longLots)} / 空 ${nf(shortLots)} → <b class="pd-r">补空 ${nf(diff)}</b>`;
-    const off = !(a.terminal && a.terminal.trade_allowed);
-    const offTxt = off
-      ? `<div class="small muted" style="margin-top:6px">该账户算法交易当前是关的：会短暂打开（不重启、不卸图表 EA），补完后关闭并记住关闭。</div>`
-      : `<div class="small muted" style="margin-top:6px">补完后会关闭该账户算法交易并记住关闭（避免 EA 立刻再开仓）。</div>`;
+    const offTxt = `<div class="small muted" style="margin-top:6px">补完后会禁止本账户图表 EA 自动交易（避免 EA 立刻再开仓）。面板算法关着也能锁仓，不会去点工具栏按钮，不重启终端。工具栏灯为面板接口保持开，不等于 EA 可下单。</div>`;
     FT.confirmBox({
       title: `一键锁仓 ${sym}`,
-      desc: `<div>${esc(a.alias || a.login)} · 仅本账户 · 按品种补齐多空手数差。若算法交易是关的，会<b>短暂打开</b>（不重启终端、不卸图表 EA），补完后<b>关闭算法交易并记住关闭</b>。</div><div style="margin-top:8px">${tip}</div>${offTxt}`,
+      desc: `<div>${esc(a.alias || a.login)} · 仅本账户 · 按品种补齐多空手数差。</div><div style="margin-top:8px">${tip}</div>${offTxt}`,
       label: "确认锁仓",
       tone: "primary",
       run: async () => {

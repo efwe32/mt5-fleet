@@ -274,6 +274,15 @@ body.pd-av-open{overflow:hidden}
 .pd-avbtn.danger:hover{background:#fff5f6}
 .pd-avpossum{font:11.5px var(--pd-mono);color:var(--pd-mut);margin:8px 0 0;line-height:1.45}
 .pd-avhint{font:11px var(--pd-mono);color:var(--pd-mut);margin:8px 0 0}
+.pd-avalgo{margin:0 16px 4px;padding:12px 14px;border:1px solid var(--pd-line);border-radius:12px;background:#fafaf7}
+.pd-avalgo-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pd-avalgo-lab{font:700 13px var(--pd-sans);color:var(--pd-ink);margin-right:auto}
+.pd-avalgo-st{font:700 13px var(--pd-sans);min-width:1.5em}
+.pd-avalgo-st.on{color:#1f7a4d}
+.pd-avalgo-st.off{color:#b15b00}
+.pd-avbtn.algo-on{background:#1f7a4d;border-color:#1f7a4d;color:#fff;min-height:36px;padding:0 14px}
+.pd-avbtn.algo-off{background:#fff;border-color:#e0c08a;color:#8a5a00;min-height:36px;padding:0 14px}
+
 .pd-avpend{border-top:1px dashed var(--pd-line);margin-top:4px;padding-top:10px}
 .pd-avpend-form select{min-height:40px;min-width:140px;border:1px solid var(--pd-line);border-radius:10px;padding:8px 10px;font:600 13px var(--pd-sans);background:#fff;color:var(--pd-ink)}
 .pd-avpend-form #pdAvPendPrice{min-width:130px}
@@ -286,7 +295,8 @@ body.pd-av-open{overflow:hidden}
 @media (max-width:760px){
   .pd-avmetrics{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pd-avform{flex-direction:column;align-items:stretch}
-  .pd-avform input,.pd-avbtn.buy,.pd-avbtn.sell,.pd-avbtn.lock{width:100%;min-height:46px;font-size:15px}
+  .pd-avform input,.pd-avbtn.buy,.pd-avbtn.sell,.pd-avbtn.lock,.pd-avbtn.algo-on,.pd-avbtn.algo-off{width:100%;min-height:46px;font-size:15px}
+  .pd-avalgo{margin:0 10px 8px}
   .pd-avform label{width:100%}
   .pd-avform label input{min-width:0;width:100%}
   .pd-avbatch{width:100%}
