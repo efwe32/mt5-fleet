@@ -30,7 +30,7 @@ EQ_STEP = 5            # 净值采样间隔（秒）
 EQ_MAX = 13 * 3600 // EQ_STEP + 10   # 保留 13 小时
 DEALS_EVERY = 60       # 平仓记录刷新间隔（秒）
 # 网页上每个账户的步骤条
-LOGIN_STEPS = [("copy", "创建副本"), ("launch", "启动终端"), ("login", "登录"), ("algo", "图表 EA 默认禁止")]
+LOGIN_STEPS = [("copy", "创建副本"), ("launch", "启动终端"), ("login", "登录"), ("algo", "保持算法状态")]
 DIST_STEPS = [("login", "登录"), ("files", "复制 EA 文件"), ("restart", "重启终端"), ("attach", "挂载 EA"), ("verify", "校验")]
 STOP_STEPS = [("restart", "关闭终端"), ("remove", "从图表移除 EA"), ("attach", "重新打开终端")]
 # 交易页快捷面板：动作 → (名称, 工作进程命令)
@@ -817,7 +817,7 @@ class Fleet:
 
     def login(self, ids: list[str], title: str = "批量登录"):
         self._prog_begin(title, ids, LOGIN_STEPS)
-        # v1.5.0/1.5.15：普通登录不再清掉 algo_off，登录后默认禁止图表 EA（分发仍会 _clear_algo_off）
+        # v1.5.16：普通登录不改 algo_off，不重启终端，不开关工具栏（分发仍会 _clear_algo_off）
         try:
             results = self._login_ids(ids, explicit=True)
         finally:
@@ -825,7 +825,7 @@ class Fleet:
         return self._summary(title, results, "登录")
 
     def quick_add(self, rows: list[dict]) -> dict:
-        """添加并登录：新账户加入台账（已存在的更新密码），然后自动 创建副本 → 启动终端 → 登录（图表 EA 默认禁止，工具栏为面板保持开）。"""
+        """添加并登录：新账户加入台账（已存在的更新密码），然后自动 创建副本 → 启动终端 → 登录（不改已有算法状态，不重启已在运行的终端）。"""
         ids, errors, added, updated, good = [], [], 0, 0, []
         for r in rows:
             login = str(r.get("login") or "").strip()
@@ -1698,7 +1698,11 @@ class Fleet:
         self.log("", "删除策略文件", True, f"已从 EA 库删除 {name}" + (f"（清台账 {cleaned}）" if cleaned else ""), "本机")
         return {"ok": True, "message": msg, "name": name, "cleaned": cleaned, "stopped": 0, "stop_fail": 0}
 
-    def shutdown(self):
+    def shutdown(self, keep_terminals: bool = False):
+        """结束工作进程。keep_terminals=True 用于在线更新：即使设置了「退出程序时关闭终端」也不关受管 MT5。"""
+        if keep_terminals:
+            self._keep_terminals_on_shutdown = True
+        keep = bool(keep_terminals or getattr(self, "_keep_terminals_on_shutdown", False))
         with self.lock:
             for i, w in list(self.workers.items()):
                 try:
@@ -1710,7 +1714,7 @@ class Fleet:
             w["proc"].join(timeout=max(0.1, deadline - time.time()))
             if w["proc"].is_alive():
                 w["proc"].terminate()
-        if self.store.settings.get("close_terminals_on_exit") and not self.mock:
+        if (not keep) and self.store.settings.get("close_terminals_on_exit") and not self.mock:
             self.close_owned_terminals()
         self._stop = True
         try:

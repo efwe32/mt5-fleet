@@ -255,7 +255,7 @@ class Worker:
 
     def set_algo(self, on: bool) -> tuple[bool, str, dict]:
         """低层：点工具栏「算法交易」按钮并回读 terminal_info().trade_allowed。
-        v1.5.15：生产路径只允许在按钮当前是关时调用 set_algo(True)（ensure_toolbar_algo_on / 分发）。
+        v1.5.16：登录/更新/重连/交易不得调用本函数去改灯。仅分发 EA（用户明确要求 EA 运行）可在需要时 set_algo(True)。
         禁止把关掉工具栏当作关面板算法或交易收尾。"""
         want = "开启" if on else "关闭"
         cur = self._algo_now()
@@ -310,13 +310,17 @@ class Worker:
         return self.set_algo(True)
 
     def with_algo_for_trade(self, fn, params: dict, guard_experts: bool = False):
-        """快捷 / 批量交易：只确保工具栏为开，然后执行下单/平仓。
-        不改 algo_off，不做完再关工具栏，绝不因交易重启 / 重开 MT5，也不卸图表 EA。
+        """快捷 / 批量交易：工具栏已经是开则直接做；是关则明确失败，绝不偷偷点开。
+        不改 algo_off，不开关工具栏，绝不因交易重启 / 重开 MT5，也不卸图表 EA。
         guard_experts 仅保留兼容旧调用，已忽略。"""
         _ = guard_experts
-        ok, msg, _ = self.ensure_toolbar_algo_on()
-        if not ok:
-            return False, f"无法打开工具栏算法交易（下单/平仓需要）：{msg}", {}
+        cur = self._algo_now()
+        if cur is None:
+            return False, "读取不到终端算法交易状态：" + self.err(), {}
+        if cur is False:
+            return False, ("终端工具栏的「算法交易」是关闭的，面板无法下单或平仓。"
+                           "请在该终端窗口的工具栏点一下「算法交易」按钮（变绿）后再试。"
+                           "本程序不会擅自打开或关闭它。"), {}
         return fn(params)
 
     def _ea_already_in_state(self, allow: bool) -> bool:
@@ -336,9 +340,10 @@ class Worker:
 
     def apply_ea_live(self, allow: bool, may_relaunch: bool = False) -> tuple[bool, str, bool]:
         """按面板开关设置图表 EA 的自动交易权限（expertmode bit 0）。
-        已是目标状态则跳过。实时生效通常需要关终端 → 改文件 → 再打开；
-        只允许在登录/重连 apply_algo_pref、面板 /api/algo、分发/停 EA 时重启。
-        交易路径 must 传 may_relaunch=False。返回 (ok, msg, relaunched)。"""
+        已是目标状态则跳过。终端未运行时直接改图表文件；终端正在运行时不重启、不改正在用的图表文件
+        （避免被 MT5 退出时覆盖），只记住面板偏好，待下次由本程序启动该已停止的终端时再生效。
+        may_relaunch 保留兼容参数，v1.5.16 起一律不因此重启终端。返回 (ok, msg, relaunched=False)。"""
+        _ = may_relaunch
         allow = bool(allow)
         if self._ea_already_in_state(allow):
             self._ea_trade_locked = not allow
@@ -356,108 +361,58 @@ class Worker:
             running = bool(T.find_processes(path))
         except Exception:
             running = False
-        if not running or not may_relaunch:
-            try:
-                if not running:
-                    T.set_chart_experts_live(path, allow)
-                self._ea_trade_locked = not allow
-            except Exception as e:
-                return False, f"改写图表 EA 权限失败：{e}", False
-            if running:
-                return True, "已记住图表 EA 权限，将在下次连接时生效（交易路径不重启终端）", False
-            return True, "图表 EA 已允许自动交易" if allow else "图表 EA 已禁止自动交易", False
-        # 终端在跑且允许重启：关 → 改文件 → 再开（只这一次）
-        if getattr(self, "_applying_ea_bounce", False):
-            self._ea_trade_locked = not allow
-            return True, "图表 EA 权限处理中", False
-        self._applying_ea_bounce = True
         try:
-            ok, msg = self._restart()
-            if not ok:
-                return False, f"关闭终端以更新图表 EA 权限失败：{msg}", False
-            try:
+            if not running:
                 T.set_chart_experts_live(path, allow)
-            except Exception as e:
-                return False, f"改写图表 EA 权限失败：{e}", False
             self._ea_trade_locked = not allow
-            ok, msg = self._relaunch(None)
-            if not ok:
-                return False, f"已改写图表 EA 权限，但重新打开终端失败：{msg}", True
-            return True, ("已重启终端并允许图表 EA 自动交易" if allow else "已重启终端并禁止图表 EA 自动交易"), True
-        finally:
-            self._applying_ea_bounce = False
+        except Exception as e:
+            return False, f"改写图表 EA 权限失败：{e}", False
+        if running:
+            return True, ("已记住面板开关，未重启终端。图表 EA 的自动交易权限会在本账户终端下次由面板启动时生效"
+                          "（登录、更新、重连都不会为此自动重启）"), False
+        return True, "图表 EA 已允许自动交易" if allow else "图表 EA 已禁止自动交易", False
 
     def apply_algo_pref(self, snap: dict) -> tuple[dict, str]:
-        """登录 / 重连后：面板开关管图表 EA，工具栏保持开给面板接口。
-        - 默认：标记 algo_off、静音图表 EA，并确保工具栏为开（不再关掉工具栏）。
-        - 设置「登录后默认打开」且用户点的登录、且未标记关闭：恢复 EA 并保证工具栏开。
-        - 分发 EA（_deploy_algo）：恢复 EA 并保证工具栏开。
-        静音状态需要改图表且终端已在运行时，可关终端改文件再打开一次。"""
-        if getattr(self, "_applying_ea_bounce", False):
-            # 重启后再登录：文件已改好，只保证工具栏开，避免再次重启
-            ok, msg, _ = self.ensure_toolbar_algo_on()
-            note = "工具栏算法交易已开（图表 EA 权限已按面板开关生效）" if ok else "打开工具栏算法交易失败：" + msg
-            if self.acc.get("algo_off"):
-                note = ("图表 EA 已禁止自动交易；" + note) if ok else note
-            try:
-                snap = self.snapshot()
-                self.status(snap)
-            except Exception:
-                pass
-            return snap, note
-
+        """登录 / 重连 / 更新接管后：不干预已有算法状态。
+        不改 algo_off，不自动静音/恢复图表 EA，不打开也不关闭工具栏，不重启终端。
+        仅当用户刚点了「分发 EA」（_deploy_algo）时，才允许图表 EA 并在需要时打开工具栏（EA 要跑）。"""
         explicit, self._explicit = self._explicit, False
         deploy = bool(getattr(self, "_deploy_algo", False))
         self._deploy_algo = False
-        auto = bool(self.settings.get("auto_enable_algo", False))
+        _ = explicit  # 普通登录即使是用户点的，也不再根据 auto_enable_algo 改状态
         note = ""
         changed = False
-        relaunched = False
 
         if deploy:
-            if self.acc.get("algo_off"):
+            if self.acc.get("algo_off") is not False:
                 self.acc["algo_off"] = False
                 self.emit(type="algo_off", algo_off=False)
-            ok_m, msg_m, relaunched = self.apply_ea_live(True, may_relaunch=True)
+            ok_m, msg_m, _rel = self.apply_ea_live(True, may_relaunch=False)
             if not ok_m:
                 note = "恢复图表 EA 自动交易失败：" + msg_m
             else:
-                note = "算法交易已开启（分发）" if not relaunched else msg_m
-            changed = True
-        elif explicit and auto and not self.acc.get("algo_off"):
-            ok_m, msg_m, relaunched = self.apply_ea_live(True, may_relaunch=True)
-            note = ("已允许图表 EA 自动交易" if ok_m else "恢复图表 EA 自动交易失败：" + msg_m)
+                note = "算法交易已开启（分发）"
+            ok, msg, det = self.ensure_toolbar_algo_on()
+            if not ok:
+                extra = "打开工具栏算法交易失败：" + msg
+                note = f"{note}；{extra}"
+                self.emit(type="log", action="算法交易", ok=False, message=extra)
+            elif det.get("changed"):
+                self.emit(type="log", action="算法交易", ok=True, message="已打开工具栏算法交易（分发 EA，供图表 EA 运行）")
             changed = True
         else:
-            if not self.acc.get("algo_off"):
-                self.acc["algo_off"] = True
-                self.emit(type="algo_off", algo_off=True)
-            ok_m, msg_m, relaunched = self.apply_ea_live(False, may_relaunch=True)
-            if not ok_m:
-                note = "禁止图表 EA 自动交易失败：" + msg_m
+            tb = self._algo_now()
+            off = bool(self.acc.get("algo_off"))
+            ea = "图表 EA 按面板设置为禁止自动交易" if off else "图表 EA 按面板设置为允许自动交易"
+            if tb is False:
+                note = ea + "；工具栏算法交易保持关闭（不会擅自打开）"
+            elif tb is True:
+                note = ea + "；工具栏算法交易保持开启（不会擅自关闭）"
             else:
-                note = "图表 EA 已禁止自动交易（默认；工具栏为面板保持开，开平仓仍可用）"
-                if relaunched:
-                    note = "图表 EA 已禁止自动交易（已重启终端使权限生效；工具栏为面板保持开，开平仓仍可用）"
-            changed = True
+                note = ea + "；未改工具栏按钮"
 
-        if relaunched:
-            try:
-                snap = self.snapshot()
-                self.status(snap)
-            except Exception:
-                pass
-        # 静音之后再开工具栏（绝不能先开再静音）
-        ok, msg, det = self.ensure_toolbar_algo_on()
-        if not ok:
-            extra = "打开工具栏算法交易失败：" + msg
-            note = f"{note}；{extra}" if note else extra
-            self.emit(type="log", action="算法交易", ok=False, message=extra)
-        elif det.get("changed"):
-            self.emit(type="log", action="算法交易", ok=True, message="已打开工具栏算法交易（供面板下单，不等于 EA 可下单）")
-            changed = True
         if note:
-            self.emit(type="log", action="算法交易", ok=ok or not note.startswith("禁止") and "失败" not in note, message=note)
+            self.emit(type="log", action="算法交易", ok=True, message=note)
 
         if changed or note:
             try:
@@ -468,63 +423,44 @@ class Worker:
         return snap, note
 
     def cmd_algo(self, p: dict):
-        """面板「算法交易」开关：只管理图表 EA 自动交易，不关工具栏。"""
+        """面板 / 头像「算法交易」开关：只管理图表 EA 自动交易，不点工具栏，不重启终端。"""
         on = bool(p.get("on"))
+        self.acc["algo_off"] = not on
+        self.emit(type="algo_off", algo_off=not on)
+        ok, msg_m, relaunched = self.apply_ea_live(on, may_relaunch=False)
+        pending = ok and ("未重启终端" in msg_m or "下次由面板启动" in msg_m)
         if on:
-            self.acc["algo_off"] = False
-            self.emit(type="algo_off", algo_off=False)
-            ok_m, msg_m, relaunched = self.apply_ea_live(True, may_relaunch=True)
-            ok_t, msg_t, det = self.ensure_toolbar_algo_on()
-            ok = ok_m and ok_t
-            parts = []
-            if ok_m:
-                parts.append("EA 已允许自动交易")
+            if not ok:
+                msg = "允许图表 EA 自动交易失败：" + msg_m
+            elif pending:
+                msg = "已记住允许图表 EA 自动交易；终端正在运行，未重启。该权限会在本账户终端下次由面板启动时生效。未改工具栏按钮"
             else:
-                parts.append("允许图表 EA 自动交易失败：" + msg_m)
-            if relaunched and ok_m:
-                parts.append("已重启终端使权限生效")
-            if ok_t:
-                parts.append("工具栏已开")
-            else:
-                parts.append("打开工具栏失败：" + msg_t)
-            detail = {"trade_allowed": (det or {}).get("trade_allowed", self._algo_now()),
-                      "ea_trading": True, "algoEnabled": True, "relaunched": relaunched}
-            return ok, "，".join(parts), detail
-        # 关闭：先静音 EA，再保证工具栏开
-        self.acc["algo_off"] = True
-        self.emit(type="algo_off", algo_off=True)
-        ok_m, msg_m, relaunched = self.apply_ea_live(False, may_relaunch=True)
-        ok_t, msg_t, det = self.ensure_toolbar_algo_on()
-        ok = ok_m and ok_t
-        if ok:
-            msg = "EA 已禁止自动交易，持仓保留；工具栏为面板保持开，开平仓仍可用"
-            if relaunched:
-                msg += "（已重启终端使权限生效）"
+                msg = "EA 已允许自动交易；未改工具栏按钮"
         else:
-            bits = []
-            if not ok_m:
-                bits.append("禁止图表 EA 失败：" + msg_m)
-            if not ok_t:
-                bits.append("打开工具栏失败：" + msg_t)
-            msg = "；".join(bits) or msg_m
-        detail = {"trade_allowed": (det or {}).get("trade_allowed", self._algo_now()),
-                  "ea_trading": False, "algoEnabled": False, "relaunched": relaunched}
+            if not ok:
+                msg = "禁止图表 EA 失败：" + msg_m
+            elif pending:
+                msg = "已记住禁止图表 EA 自动交易，持仓保留；终端正在运行，未重启。该权限会在本账户终端下次由面板启动时生效。未改工具栏按钮"
+            else:
+                msg = "EA 已禁止自动交易，持仓保留；未改工具栏按钮。工具栏若本来是开的，仍可建仓平仓"
+        detail = {"trade_allowed": self._algo_now(),
+                  "ea_trading": on, "algoEnabled": on, "relaunched": False}
         return ok, msg, detail
 
     def check_algo(self, snap: dict) -> tuple[bool, str]:
         ti = snap.get("terminal") or {}
         acc = snap.get("account") or {}
         if not ti.get("trade_allowed", False):
-            return False, ("终端工具栏的「算法交易」没有打开：面板下单需要它保持开。"
-                           "本程序会在需要时打开它；如果仍是关闭，请在这个终端窗口的工具栏点一下「算法交易」按钮（变绿），"
+            return False, ("终端工具栏的「算法交易」是关闭的。本程序不会擅自打开或关闭它。"
+                           "面板下单需要它是开的：请在这个终端窗口的工具栏点一下「算法交易」按钮（变绿），"
                            "并检查 工具 → 选项 → 智能交易系统 里「允许算法交易」已勾选")
         if not acc.get("trade_allowed", True):
             return False, "这个账户不允许交易：可能是用投资者（只读）密码登录的，或账户被券商禁止交易，请改用交易密码"
         if not acc.get("trade_expert", True):
             return False, "券商禁止这个账户使用 EA（智能交易）自动交易，EA 不会下单；Python 手动批量下单仍可尝试"
         if self.acc.get("algo_off"):
-            return True, "图表 EA 已禁止自动交易；工具栏为面板保持开，开平仓仍可用"
-        return True, "图表 EA 允许自动交易，工具栏已开"
+            return True, "图表 EA 按面板设置为禁止自动交易；工具栏保持开启（不会擅自关闭），开平仓仍可用"
+        return True, "图表 EA 按面板设置为允许自动交易；工具栏保持开启（不会擅自关闭）"
 
     def wipe_ini(self):
         from . import terminal as T
@@ -534,7 +470,7 @@ class Worker:
 
     def ensure_terminal(self, path: str, startup: dict | None = None) -> tuple[bool, str]:
         """确认终端路径合格；没有副本就从模板复制一份；没运行就由本程序以 /portable 启动并登记 PID。
-        启动时用一次性的 /config 配置文件写入登录信息并打开算法交易，登录后立即删除该文件。"""
+        已在运行则接管、不重启、不改工具栏。仅在新启动已停止的终端时写入登录配置：工具栏 Enabled 沿用上次保存值（没有就不写），不擅自开关。"""
         from . import terminal as T
         if not path:
             return self._fail_step("copy", "没有设置终端路径（本程序不会去连接默认/桌面上的 MT5）")
@@ -596,19 +532,21 @@ class Worker:
         enc = self.settings.get("ini_encoding", "utf-16")
         dll = bool(self.settings.get("allow_dll_import", False))
         ini = None
-        # v1.5.15：先按面板开关改好图表 EA 的 live 位，再以 Enabled=1 启动（工具栏开给面板）。
-        # 未改好图表时先 Enabled=0，登录后再静音并打开工具栏，避免 EA 在启动瞬间下单。
-        if startup is not None:
-            want_ea = True
+        # v1.5.16：终端此时未运行。按已保存的面板开关改图表 EA 权限（这是用户之前点过的偏好，不是登录时强制改默认）。
+        # 工具栏 Enabled 沿用终端上次保存的状态；读不到则不写该键，避免把关着的灯打开或把开着的关掉。
+        # 分发 EA 走 startup 时仍写 Enabled=1，因为用户明确要求 EA 运行。
+        if startup is None:
+            try:
+                T.set_chart_experts_live(path, not bool(self.acc.get("algo_off")))
+            except Exception:
+                pass
+            try:
+                want_algo = T.read_saved_toolbar_algo(path)
+            except Exception:
+                want_algo = None
         else:
-            want_ea = bool(self.settings.get("auto_enable_algo", False)) and not self.acc.get("algo_off")
-        charts_ready = True
-        try:
-            T.set_chart_experts_live(path, want_ea)
-        except Exception:
-            charts_ready = False
-        want_algo = True if (want_ea or charts_ready) else False
-        if creds or startup or want_algo or not want_ea:
+            want_algo = True
+        if creds or startup or want_algo is not None:
             try:
                 ini = T.write_config_ini(path, creds, startup, dll, enc, algo=want_algo)
             except Exception as e:
@@ -1075,7 +1013,7 @@ class Worker:
             self.emit(type="algo_off", algo_off=True)
             ok_a, msg_a, _rel = self.apply_ea_live(False, may_relaunch=False)
             if ok_a:
-                msg_a = "已禁止图表 EA 自动交易（工具栏保持开，开平仓仍可用）"
+                msg_a = "已禁止图表 EA 自动交易（未改工具栏，不重启终端）"
             return ok_a, msg_a
 
         if diff < step / 2:
@@ -1534,8 +1472,7 @@ class Worker:
             self.emit(type="result", req=req, ok=False, message="终端未登录，先批量登录再部署/停止策略")
             return
         try:
-            # 下单/平仓等只需工具栏为开；面板算法关着也能做，且不会再关工具栏、不改 algo_off
-            # 交易路径绝不重启终端 / 不卸图表 EA（v1.5.14 起）
+            # 下单/平仓：工具栏已开则直接做；已关则明确失败，绝不偷偷点开，不改 algo_off，不重启
             if name in ("close", "modify", "cancel_orders", "nuke", "lock", "order", "order_pair"):
                 ok, msg, detail = self.with_algo_for_trade(fn, params, guard_experts=False)
             else:

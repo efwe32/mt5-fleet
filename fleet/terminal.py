@@ -220,15 +220,17 @@ def install_files(terminal_path: str, ex5_src: Path, preset_src: Path | None) ->
     return dst, pdst
 
 
-def _ini_lines(creds: dict | None, startup: dict | None, allow_dll: bool, algo: bool = True) -> list[str]:
+def _ini_lines(creds: dict | None, startup: dict | None, allow_dll: bool, algo: bool | None = True) -> list[str]:
     lines: list[str] = []
     if creds:
         # 登录信息只写进这个临时文件，终端启动、登录完成后立刻抹掉删除
         lines += ["[Common]", f"Login={creds['login']}", f"Password={creds['password']}", f"Server={creds['server']}",
                   "KeepPrivate=1", "NewsEnable=0", "CertInstall=0", ""]
-    # Enabled = 工具栏「算法交易」按钮。v1.5.15 起登录也尽量写 1（先静音图表 EA），仅图表未改好时才写 0
-    lines += ["[Experts]", "AllowLiveTrading=1", f"AllowDllImport={1 if allow_dll else 0}", f"Enabled={1 if algo else 0}",
-              "Account=0", "Profile=0"]
+    # Enabled = 工具栏「算法交易」按钮。v1.5.16：algo=None 时不写 Enabled，沿用终端上次保存的开关，避免把关着的灯打开或把开着的关掉。
+    lines += ["[Experts]", "AllowLiveTrading=1", f"AllowDllImport={1 if allow_dll else 0}"]
+    if algo is not None:
+        lines.append(f"Enabled={1 if algo else 0}")
+    lines += ["Account=0", "Profile=0"]
     if startup:
         stem = Path(startup["fileName"]).stem
         lines += ["", "[StartUp]", f"Expert={FLEET_SUBDIR}\\{stem}", f"Symbol={startup['symbol']}",
@@ -239,7 +241,7 @@ def _ini_lines(creds: dict | None, startup: dict | None, allow_dll: bool, algo: 
 
 
 def write_config_ini(terminal_path: str, creds: dict | None = None, startup: dict | None = None,
-                     allow_dll: bool = False, encoding: str = "utf-16", algo: bool = True) -> Path:
+                     allow_dll: bool = False, encoding: str = "utf-16", algo: bool | None = True) -> Path:
     """写一次性的启动配置（/config:xxx.ini）到该终端自己的目录，文件名随机。
     creds={login,password,server} 时包含登录信息，调用方必须在终端启动后用 wipe_file() 删除。"""
     ini = terminal_dir(terminal_path) / f"fleet_{secrets.token_hex(6)}.ini"
@@ -256,8 +258,28 @@ def write_start_ini(terminal_path: str, ex5_name: str, symbol: str, timeframe: s
 
 def write_base_ini(terminal_path: str, encoding: str = "utf-16", creds: dict | None = None,
                    allow_dll: bool = False) -> Path:
-    """普通启动用的配置（默认 algo=True）；登录路径由 worker 按设置传入 Enabled。"""
-    return write_config_ini(terminal_path, creds, None, allow_dll, encoding)
+    """普通启动用的配置。登录路径应传入终端上次保存的 Enabled，或 algo=None 表示不改工具栏。"""
+    return write_config_ini(terminal_path, creds, None, allow_dll, encoding, algo=None)
+
+
+def read_saved_toolbar_algo(terminal_path: str) -> bool | None:
+    """读取该便携终端上次保存的工具栏「算法交易」开关。找不到则返回 None（启动配置不要写 Enabled）。"""
+    d = terminal_dir(terminal_path)
+    for rel in ("Config/common.ini", "Config/terminal.ini", "config/common.ini", "config/terminal.ini"):
+        f = d / rel
+        if not f.is_file():
+            continue
+        try:
+            text, _ = _read_text(f)
+        except Exception:
+            continue
+        block = re.search(r"(?im)^\[Experts\]\s*$([\s\S]*?)(?=^\[|\Z)", text)
+        if not block:
+            continue
+        e = re.search(r"(?im)^\s*Enabled\s*=\s*([01])\s*$", block.group(1))
+        if e:
+            return e.group(1) == "1"
+    return None
 
 
 def wipe_file(path) -> bool:
