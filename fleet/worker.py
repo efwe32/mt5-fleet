@@ -255,8 +255,8 @@ class Worker:
 
     def set_algo(self, on: bool) -> tuple[bool, str, dict]:
         """低层：点工具栏「算法交易」按钮并回读 terminal_info().trade_allowed。
-        v1.5.16：登录/更新/重连/交易不得调用本函数去改灯。仅分发 EA（用户明确要求 EA 运行）可在需要时 set_algo(True)。
-        禁止把关掉工具栏当作关面板算法或交易收尾。"""
+        v1.5.17：登录/更新/重连不得调用本函数去改灯。交易路径仅当工具栏当前是关时，经 ensure_toolbar_algo_on 调用 set_algo(True)。
+        分发 EA（用户明确要求 EA 运行）可在需要时 set_algo(True)。禁止把关掉工具栏当作关面板算法或交易收尾。"""
         want = "开启" if on else "关闭"
         cur = self._algo_now()
         if cur is None:
@@ -310,17 +310,14 @@ class Worker:
         return self.set_algo(True)
 
     def with_algo_for_trade(self, fn, params: dict, guard_experts: bool = False):
-        """快捷 / 批量交易：工具栏已经是开则直接做；是关则明确失败，绝不偷偷点开。
-        不改 algo_off，不开关工具栏，绝不因交易重启 / 重开 MT5，也不卸图表 EA。
+        """快捷 / 批量交易：只确保工具栏为开，然后执行下单/平仓。
+        不改 algo_off，不做完再关工具栏，绝不因交易重启 / 重开 MT5，也不卸图表 EA。
+        工具栏已开则直接做、不再点击；已关则先保证图表 EA 按面板开关保持静音，再打开工具栏一次供接口下单。
         guard_experts 仅保留兼容旧调用，已忽略。"""
         _ = guard_experts
-        cur = self._algo_now()
-        if cur is None:
-            return False, "读取不到终端算法交易状态：" + self.err(), {}
-        if cur is False:
-            return False, ("终端工具栏的「算法交易」是关闭的，面板无法下单或平仓。"
-                           "请在该终端窗口的工具栏点一下「算法交易」按钮（变绿）后再试。"
-                           "本程序不会擅自打开或关闭它。"), {}
+        ok, msg, _ = self.ensure_toolbar_algo_on()
+        if not ok:
+            return False, f"无法打开工具栏算法交易（下单/平仓需要）：{msg}", {}
         return fn(params)
 
     def _ea_already_in_state(self, allow: bool) -> bool:
@@ -442,7 +439,7 @@ class Worker:
             elif pending:
                 msg = "已记住禁止图表 EA 自动交易，持仓保留；终端正在运行，未重启。该权限会在本账户终端下次由面板启动时生效。未改工具栏按钮"
             else:
-                msg = "EA 已禁止自动交易，持仓保留；未改工具栏按钮。工具栏若本来是开的，仍可建仓平仓"
+                msg = "EA 已禁止自动交易，持仓保留；未改工具栏按钮。关着时仍可建仓平仓"
         detail = {"trade_allowed": self._algo_now(),
                   "ea_trading": on, "algoEnabled": on, "relaunched": False}
         return ok, msg, detail
@@ -451,9 +448,9 @@ class Worker:
         ti = snap.get("terminal") or {}
         acc = snap.get("account") or {}
         if not ti.get("trade_allowed", False):
-            return False, ("终端工具栏的「算法交易」是关闭的。本程序不会擅自打开或关闭它。"
-                           "面板下单需要它是开的：请在这个终端窗口的工具栏点一下「算法交易」按钮（变绿），"
-                           "并检查 工具 → 选项 → 智能交易系统 里「允许算法交易」已勾选")
+            return False, ("终端工具栏的「算法交易」当前是关闭的。更新、登录、重连不会擅自打开或关闭它。"
+                           "你在面板上开平仓时，若工具栏是关的，程序会先保证图表 EA 按面板开关保持静音，再打开工具栏一次以便下单，下完不会再关回去。"
+                           "也可以在这个终端窗口手动点一下「算法交易」按钮（变绿），并检查 工具 → 选项 → 智能交易系统 里「允许算法交易」已勾选")
         if not acc.get("trade_allowed", True):
             return False, "这个账户不允许交易：可能是用投资者（只读）密码登录的，或账户被券商禁止交易，请改用交易密码"
         if not acc.get("trade_expert", True):
