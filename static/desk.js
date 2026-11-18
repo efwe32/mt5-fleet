@@ -850,7 +850,7 @@ window.FleetMobileSheet = (function () {
           <button type="button" class="pd-avbtn algo-on" id="pdAvAlgoOn" ${!online || D.detailBusy || D.algoBusy ? "disabled" : ""}>开启</button>
           <button type="button" class="pd-avbtn algo-off" id="pdAvAlgoOff" ${!online || D.detailBusy || D.algoBusy ? "disabled" : ""}>关闭</button>
         </div>
-        <p class="pd-avhint">这个开关只管本账户图表 EA 是否自动交易，不是工具栏那颗灯。关着时只要工具栏本来是开的，仍能建仓、平仓、锁仓、挂预订单；不会去点工具栏按钮，也不会重启终端。工具栏原来开着保持开，关着保持关。</p>
+        <p class="pd-avhint">这个开关只管本账户图表 EA 是否自动交易，不是工具栏那颗灯。关着时仍能建仓、平仓、锁仓、挂预订单，也不会重启终端。点开关不会去改工具栏按钮。若下单时工具栏是关的，程序会先保证 EA 保持静音，再打开工具栏一次以便下单，下完不会再关回去。</p>
       </div>
       <div class="pd-avsec">
         <div class="pd-avsec-t pd-avsec-row">
@@ -870,9 +870,9 @@ window.FleetMobileSheet = (function () {
           <label>手数<input type="number" id="pdAvLots" min="0.01" step="0.01" value="${esc(form.lots || "0.01")}" ${!online || D.detailBusy ? "disabled" : ""}></label>
           <button type="button" class="pd-avbtn buy" id="pdAvBuy" ${!online || D.detailBusy ? "disabled" : ""}>开多</button>
           <button type="button" class="pd-avbtn sell" id="pdAvSell" ${!online || D.detailBusy ? "disabled" : ""}>开空</button>
-          <button type="button" class="pd-avbtn lock" id="pdAvLock" title="按上方品种补齐多空手数差，并禁止本账户图表 EA 自动交易（工具栏保持开，仍可开平仓）" ${!online || D.detailBusy ? "disabled" : ""}>一键锁仓</button>
+          <button type="button" class="pd-avbtn lock" id="pdAvLock" title="按上方品种补齐多空手数差，并禁止本账户图表 EA 自动交易（不重启终端；若工具栏当时是关的，会打开一次以便下单）" ${!online || D.detailBusy ? "disabled" : ""}>一键锁仓</button>
         </div>
-        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。「一键锁仓」只锁本账户当前品种；面板算法关着也能锁，不会点工具栏、不重启终端。补完后禁止本账户图表 EA 自动交易。</p>
+        <p class="pd-avhint">固定手数 · 魔术号 880000 · 备注 fleet avatar。下单前会弹出确认。「一键锁仓」只锁本账户当前品种；面板算法关着也能锁，不重启终端。若工具栏当时是关的，会先保证 EA 保持静音再打开一次以便下单，下完不会再关回去。补完后禁止本账户图表 EA 自动交易。</p>
       </div>
       <div class="pd-avsec pd-avpend">
         <div class="pd-avsec-t">预订单（仅本账户）</div>
@@ -906,13 +906,13 @@ window.FleetMobileSheet = (function () {
     const name = esc(a.alias || a.login);
     const desc = on
       ? `<div>允许 <b>${name}</b> 的<b>图表 EA 自动交易</b>。打开后，这个终端里挂着的 EA 会开始自动下单。</div>
-         <div class="small muted" style="margin-top:6px">这只管本账户图表 EA，不是去点工具栏按钮，也不重启终端。工具栏原来开着保持开，关着保持关。</div>`
+         <div class="small muted" style="margin-top:6px">这只管本账户图表 EA，点这个开关不会去改工具栏按钮，也不重启终端。更新、登录、重连同样不改工具栏：原来开着保持开，关着保持关。</div>`
       : `<div>禁止 <b>${name}</b> 的<b>图表 EA 自动交易</b>。</div>
-         <div style="margin-top:6px">关闭后：<b>EA 停止自动下单，已有持仓和挂单保留，不会平仓</b>。关着时也能建仓、平仓、锁仓、挂预订单，<b>不会再去点工具栏按钮</b>。</div>
-         <div class="small muted" style="margin-top:6px">不会去点工具栏按钮，也不会重启终端。工具栏原来开着保持开，关着保持关。</div>`;
+         <div style="margin-top:6px">关闭后：<b>EA 停止自动下单，已有持仓和挂单保留，不会平仓</b>。关着时也能建仓、平仓、锁仓、挂预订单。</div>
+         <div class="small muted" style="margin-top:6px">点这个开关不会去改工具栏按钮，也不会重启终端。若用面板下单时工具栏是关的，程序会先保证 EA 保持静音，再打开工具栏一次以便下单，下完不会再关回去。</div>`;
     FT.confirmBox({
       title: on ? "开启本账户算法交易" : "关闭本账户算法交易",
-      desc: desc + `<div class="small muted" style="margin-top:6px">只操作本程序启动的这个终端，桌面上你自己的 MT5 不碰。使权限立刻生效时，可能需要重启一次该终端（不会在下单/平仓时重启）。</div>`,
+      desc: desc + `<div class="small muted" style="margin-top:6px">只操作本程序启动的这个终端，桌面上你自己的 MT5 不碰。点这个开关不会重启终端。</div>`,
       label: on ? "确认开启" : "确认关闭",
       tone: on ? "up" : "danger",
       run: async () => {
@@ -953,7 +953,7 @@ window.FleetMobileSheet = (function () {
     if (Math.abs(diff) < 0.00005) tip = "已锁仓/无净持仓，跳过补单，仍禁止图表 EA 自动交易";
     else if (diff < 0) tip = `空 ${nf(shortLots)} / 多 ${nf(longLots)} → <b class="pd-g">补多 ${nf(-diff)}</b>`;
     else tip = `多 ${nf(longLots)} / 空 ${nf(shortLots)} → <b class="pd-r">补空 ${nf(diff)}</b>`;
-    const offTxt = `<div class="small muted" style="margin-top:6px">补完后会禁止本账户图表 EA 自动交易（避免 EA 立刻再开仓）。面板算法关着也能锁仓（工具栏需本来是开的），不会去点工具栏按钮，不重启终端。</div>`;
+    const offTxt = `<div class="small muted" style="margin-top:6px">补完后会禁止本账户图表 EA 自动交易（避免 EA 立刻再开仓）。面板算法关着也能锁仓，不重启终端。若工具栏当时是关的，会先保证 EA 保持静音再打开一次以便下单，下完不会再关回去。</div>`;
     FT.confirmBox({
       title: `一键锁仓 ${sym}`,
       desc: `<div>${esc(a.alias || a.login)} · 仅本账户 · 按品种补齐多空手数差。</div><div style="margin-top:8px">${tip}</div>${offTxt}`,

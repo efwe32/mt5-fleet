@@ -164,7 +164,7 @@
               <div class="pd-pop hidden" id="alPop" role="dialog" aria-label="选择算法交易开关的账户"></div>
             </div>
           </div>
-          <p class="small muted" style="margin:6px 0 10px">这个开关管的是图表 EA 是否自动交易，不是工具栏那颗灯。关闭后会记住禁止 EA 自动下单，持仓保留；关着时只要工具栏本来是开的，仍能建仓、平仓、锁仓、挂预订单，不会去点工具栏按钮，也不会重启终端。本程序不会擅自打开或关闭工具栏那颗灯：原来开着保持开，关着保持关。若工具栏是关的，面板下单会失败并提示你在该终端窗口手动点开。下面的「开 / 关」表示图表 EA 权限。只操作本程序启动的终端，桌面上的 MT5 不碰。</p>
+          <p class="small muted" style="margin:6px 0 10px">这个开关管的是图表 EA 是否自动交易，不是工具栏那颗灯。关闭后会记住禁止 EA 自动下单，持仓保留；关着时仍能建仓、平仓、锁仓、挂预订单，也不会重启终端。点这个开关不会去改工具栏按钮。更新、登录、重连不会擅自打开或关闭工具栏那颗灯：原来开着保持开，关着保持关。若你用面板下单或平仓时工具栏是关的，程序会先确保图表 EA 保持静音，再打开工具栏一次以便接口下单，下完不会再关回去。下面的「开 / 关」表示图表 EA 权限。只操作本程序启动的终端，桌面上的 MT5 不碰。</p>
           <div class="al-btns">
             <button type="button" class="btn up" id="alOn">一键开启</button>
             <button type="button" class="btn danger" id="alOff">一键关闭</button>

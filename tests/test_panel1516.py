@@ -23,7 +23,7 @@ def check(name, cond, info=""):
         fails.append(name)
 
 
-check("版本 1.5.16", __version__ == "1.5.16", __version__)
+check("版本 ≥1.5.16", tuple(int(x) for x in __version__.split(".")[:3]) >= (1, 5, 16), __version__)
 
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -39,7 +39,7 @@ desk = (ROOT / "static" / "desk.js").read_text(encoding="utf-8")
 pend = (ROOT / "static" / "pending.js").read_text(encoding="utf-8")
 
 check("更新说明 v1.5.16", "## v1.5.16" in notes and "不重启" in notes and "关着保持关" in notes and "开着保持开" in notes)
-check("README 本次更新 1.5.16", "v1.5.16" in readme.split("上次更新")[0] and "不改算法" in readme.split("上次更新")[0])
+check("README 含 1.5.16", "v1.5.16" in readme and "不改算法" in readme)
 
 # 源码门禁
 pref = worker[worker.find("def apply_algo_pref"):worker.find("def cmd_algo")]
@@ -50,8 +50,8 @@ check("apply_algo_pref 默认路径不调用 ensure_toolbar / set_algo",
       "ensure_toolbar_algo_on" not in pref.split("if deploy:")[0] and "set_algo(" not in pref.split("if deploy:")[0])
 check("apply_algo_pref 不再 may_relaunch=True", "may_relaunch=True" not in pref)
 check("apply_ea_live 不再重启终端", "self._restart" not in live_fn and "self._relaunch" not in live_fn and "已重启终端并" not in live_fn)
-check("with_algo 不调用 ensure / set_algo", "ensure_toolbar_algo_on" not in trade and "set_algo(" not in trade)
-check("with_algo 工具栏关时有中文说明", "不会擅自打开或关闭" in trade)
+check("with_algo 经 ensure 打开工具栏且无 finally 关闭", "ensure_toolbar_algo_on" in trade and "set_algo(False)" not in trade)
+check("with_algo 文档写明不重启、不做完再关", "绝不因交易重启" in trade and "不做完再关" in trade)
 check("cmd_algo 不点工具栏、不重启", "ensure_toolbar_algo_on" not in algo_fn and "may_relaunch=True" not in algo_fn and "已重启终端" not in algo_fn)
 check("worker 生产路径无 set_algo(False)", "set_algo(False)" not in worker)
 check("shutdown 支持 keep_terminals", "def shutdown(self, keep_terminals: bool = False)" in mgr)
@@ -124,7 +124,7 @@ check("已在线再登录：不 set_algo", set_calls == [], set_calls)
 check("已在线再登录：工具栏仍关、algo_off 仍真", w._algo_now() is False and w.acc.get("algo_off") is True)
 check("已在线再登录说明保持关闭", "保持关闭" in (note or ""), note)
 
-# 交易：工具栏已开不点灯；工具栏关则失败说明，不点开
+# 交易：工具栏已开不点灯（v1.5.17 工具栏关时的打开行为由 test_panel1517 覆盖）
 w = make_worker(password="mock-pass", algo_off=True)
 ok, msg = w.connect()
 assert ok and w._algo_now() is True
@@ -137,18 +137,6 @@ ok, msg, d = w.with_algo_for_trade(w.cmd_order, {
 })
 check("工具栏已开：下单成功且不 set_algo", ok and set_calls == [], (ok, msg, set_calls))
 check("下单后状态不变", w._algo_now() is True and w.acc.get("algo_off") is True)
-
-w2 = make_worker(password="noalgo", algo_off=True)
-ok, msg = w2.connect()
-assert ok and w2._algo_now() is False
-set_calls = []
-w2.set_algo = lambda on: (set_calls.append(on) or (True, "opened", {"changed": True, "trade_allowed": True}))
-ok, msg, d = w2.with_algo_for_trade(w2.cmd_order, {
-    "symbol": "XAUUSD", "kind": "buy", "lots": 0.01, "scale_mode": "fixed",
-    "auto_symbol": True, "deviation": 20, "magic": 880000, "max_lots": 10,
-})
-check("工具栏已关：下单失败且不偷偷打开", (not ok) and set_calls == [] and w2._algo_now() is False, (ok, msg, set_calls, w2._algo_now()))
-check("工具栏已关：中文说明让用户手动点", "工具栏" in msg and "关闭" in msg and "不会擅自" in msg, msg)
 
 # 用户点开关：不点工具栏、不重启
 w = make_worker(password="mock-pass", algo_off=False)

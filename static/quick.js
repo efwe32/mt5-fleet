@@ -358,7 +358,7 @@
     };
     confirmBox({
       title: `平仓 #${ticket}？`,
-      desc: `<div>${h(a.alias)} · <b>${h(p.symbol)}</b> ${side} ${nf(p.volume)} 手，开仓 ${p.openPrice}，现价 ${p.price}，浮盈 <b class="${cls(p.profit)}">${sg(p.profit)}</b>。</div><div class="small muted" style="margin-top:6px">只平这一笔。面板算法关着也能平，不会去点工具栏按钮。</div>`,
+      desc: `<div>${h(a.alias)} · <b>${h(p.symbol)}</b> ${side} ${nf(p.volume)} 手，开仓 ${p.openPrice}，现价 ${p.price}，浮盈 <b class="${cls(p.profit)}">${sg(p.profit)}</b>。</div><div class="small muted" style="margin-top:6px">只平这一笔。面板算法关着也能平，不重启终端。若工具栏当时是关的，会先保证 EA 保持静音再打开一次以便下单，下完不会再关回去。</div>`,
       label: "确认平仓", tone: "danger", run: () => { go(); },
     });
   }
@@ -484,7 +484,7 @@
       if (noConfirm) return send("lock", {});
       return confirmBox({
         title: `一键锁仓 ${sym}`,
-        desc: `<div>按当前品种补齐多空手数差。补完后会<b>禁止该账户图表 EA 自动交易</b>（避免 EA 立刻再开仓）。面板算法关着也能锁仓（工具栏需本来是开的），<b>不会去点工具栏按钮，不重启终端</b>。</div>${plan.join("")}${offTxt}`,
+        desc: `<div>按当前品种补齐多空手数差。补完后会<b>禁止该账户图表 EA 自动交易</b>（避免 EA 立刻再开仓）。面板算法关着也能锁仓，<b>不重启终端</b>。若工具栏当时是关的，会先保证 EA 保持静音再打开一次以便下单，下完不会再关回去。</div>${plan.join("")}${offTxt}`,
         label: "确认锁仓", tone: "primary", run: () => { send("lock", {}); },
       });
     }
